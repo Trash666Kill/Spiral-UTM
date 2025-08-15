@@ -153,7 +153,6 @@ main() {
     dhcp
     dns
     ntp
-    mount
     virtual_machine
     container
     "
