@@ -93,21 +93,6 @@ workstation() {
     nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport 993 accept
 }
 
-wireguard() {
-
-    sleep 15
-
-    # Filter Rules
-    nft add rule inet firelux output udp dport 62931 accept
-
-    # WireGuard Setup
-    if ! wg show wg0 &>/dev/null; then
-        wg-quick up wg0
-    fi
-
-    sleep 10
-}
-
 # Main function to orchestrate the setup
 main() {
     SERVICES="
@@ -117,13 +102,12 @@ main() {
     virtual_machine
     container
     workstation
-    wireguard
     "
 
     for SERVICE in $SERVICES
     do
         $SERVICE
-        sleep 30
+        sleep 15
     done
 }
 
