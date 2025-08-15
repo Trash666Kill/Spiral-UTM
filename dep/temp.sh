@@ -490,7 +490,7 @@ schedule_post_reboot_cleanup() {
 	### END INIT INFO
 	pkill -u $initial_user
 	userdel -r $initial_user
-	rm -rf /root/UTM
+	rm -rf /root/Spiral-UTM-main
 	update-rc.d later remove
 	rm -f /etc/init.d/later
 	EOF
