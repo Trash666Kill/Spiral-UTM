@@ -551,36 +551,37 @@ EOF
 # Function to set up the firewall.
 setup_firewall() {
     printf "\n\e[1;34m--- Starting Firewall Setup ---\e[0m\n"
+
     printf "\n\e[32m*\e[0m Installing nftables package...\n"
+    # Lógica corrigida: apt-get retorna 0 se o pacote já estiver instalado.
+    # Um código de saída diferente de zero indica um erro real.
     if apt-get -y install nftables > /dev/null 2>&1; then
-        printf "  \e[32m✅ Success\e[0m\n"
+        printf "  \e[32m✅ Success (package installed or already present).\e[0m\n"
     else
-        printf "  \e[33mℹ️  Could not install package (it may already be installed).\e[0m\n"
+        printf "  \e[31m❗ Error installing nftables package.\e[0m\n"
     fi
+
     printf "\n\e[32m*\e[0m Disabling the default nftables service...\n"
     if systemctl disable --now nftables --quiet; then
         printf "  \e[32m✅ Success\e[0m\n"
     else
         printf "  \e[31m❗ Error disabling nftables service.\e[0m\n"
     fi
+
     printf "\n\e[32m*\e[0m Copying custom firewall script...\n"
-    if cp systemd/scripts/firewall.sh /root/.services/; then
+    if cp -r systemd/scripts/firewall /root/.services/; then
         printf "  \e[32m✅ Success\e[0m\n"
         printf "\n\e[32m*\e[0m Adjusting permissions for firewall script...\n"
-        if chmod 700 /root/.services/firewall.sh; then
+        if chmod 700 /root/.services/firewall/*; then
             printf "  \e[32m✅ Success\e[0m\n"
         else
             printf "  \e[31m❗ Error setting permissions.\e[0m\n"
         fi
     else
-        printf "  \e[31m❗ Error copying firewall script. Check if 'systemd/scripts/firewall.sh' exists.\e[0m\n"
+        # Mensagem de erro corrigida para referenciar o diretório correto sendo copiado.
+        printf "  \e[31m❗ Error copying firewall script. Check if 'systemd/scripts/firewall' directory exists.\e[0m\n"
     fi
-    printf "\n\e[32m*\e[0m Setting default interface in firewall script...\n"
-    if sed -i "s/WAN=''/WAN='br_vlan710'/" /root/.services/firewall.sh; then
-        printf "  \e[32m✅ Success\e[0m\n"
-    else
-        printf "  \e[31m❗ Error modifying the firewall script.\e[0m\n"
-    fi
+
     printf "\n\e[1;34m--- Firewall Setup Complete ---\e[0m\n"
 }
 
