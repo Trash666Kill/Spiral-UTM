@@ -39,33 +39,44 @@ setup_interfaces() {
     local BEST_INTERFACE=""
     local BEST_LATENCY="9999.0"
 
+    printf "\n\e[32m*\e[0m Testando interfaces ativas para selecionar a melhor WAN0...\n"
     for IFACE in $(ip -o link show | awk -F': ' '/state UP/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}'); do
         LATENCY=$(ping -I "$IFACE" -4 -c 3 "$TARGET_IP" 2>/dev/null | awk -F'/' 'END {print $5}')
-        if (( $(echo "$LATENCY < $BEST_LATENCY" | bc -l) )); then
-            BEST_LATENCY="$LATENCY"
-            BEST_INTERFACE="$IFACE"
+        if [ -n "$LATENCY" ]; then
+             if (( $(echo "$LATENCY < $BEST_LATENCY" | bc -l) )); then
+                BEST_LATENCY="$LATENCY"
+                BEST_INTERFACE="$IFACE"
+            fi
         fi
     done
 
     WAN0="$BEST_INTERFACE"
+    printf "\n\e[32m✅ Interface WAN0 selecionada: \033[1;32m%s\033[0m (Latência: %s ms)\n" "$WAN0" "$BEST_LATENCY"
+    
     local IP_INFO
     IP_INFO=$(ip -4 addr show "$WAN0" | grep 'inet' | awk '{print $2}')
     WAN0_IPV4=$(echo "$IP_INFO" | cut -d'/' -f1)
     WAN0_MASK=$(echo "$IP_INFO" | cut -d'/' -f2)
     WAN0_GATEWAY=$(ip route | grep 'default' | grep "dev $WAN0" | awk '{print $3}')
 
-    local DOWN_INTERFaces
     mapfile -t DOWN_INTERFACES < <(ip -o link show | awk -F': ' '/state DOWN/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}')
-    printf "  The following interfaces are inactive. Choose one for LAN0:\n"
-    for i in "${!DOWN_INTERFACES[@]}"; do
-        printf "    \e[33m%d)\e[0m %s\n" "$((i+1))" "${DOWN_INTERFACES[$i]}"
-    done
-    read -p "  Enter the number of the desired interface: " CHOICE
-    LAN0="${DOWN_INTERFACES[$((CHOICE-1))]}"
-    printf "\n  Now, configure the network details for \033[1;32m%s\033[0m:\n" "$LAN0"
-    read -p "  -> IPv4 Address: " LAN0_IPV4
-    read -p "  -> Subnet Mask Prefix (1-32): " LAN0_MASK
-    read -p "  -> Gateway (optional, press Enter to skip): " LAN0_GATEWAY
+    if [ ${#DOWN_INTERFACES[@]} -gt 0 ]; then
+        printf "\n\e[32m*\e[0m As seguintes interfaces estão inativas. Escolha uma para LAN0:\n"
+        for i in "${!DOWN_INTERFACES[@]}"; do
+            printf "    \e[33m%d)\e[0m %s\n" "$((i+1))" "${DOWN_INTERFACES[$i]}"
+        done
+        
+        local CHOICE
+        read -p "  Digite o número da interface desejada: " CHOICE
+        
+        # Basic validation to ensure a valid choice is made
+        if [[ "$CHOICE" =~ ^[0-9]+$ ]] && [ "$CHOICE" -ge 1 ] && [ "$CHOICE" -le "${#DOWN_INTERFACES[@]}" ]; then
+            LAN0="${DOWN_INTERFACES[$((CHOICE-1))]}"
+            printf "\n\e[32m✅ Interface LAN0 definida como: \033[1;32m%s\033[0m\n" "$LAN0"
+        else
+            printf "\n\e[31m❗ Opção inválida. Nenhuma interface LAN0 foi configurada.\e[0m\n"
+        fi
+    fi
     printf "\n\e[1;34m--- Network Interface Configuration Complete ---\e[0m\n"
 }
 
@@ -291,16 +302,34 @@ lxc.apparmor.allow_nesting = 1'
 setup_ssh() {
     printf "\n\e[1;34m--- Starting SSH Configuration ---\e[0m\n"
     apt-get -y -qq install openssh-server sshfs autossh
-    rm -f /etc/ssh/sshd_config && cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
+
+    if [ -f "sshd_config" ]; then
+        rm -f /etc/ssh/sshd_config
+        cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
+    else
+        printf "\n\e[33mℹ️  Custom 'sshd_config' not found in 'dep' directory. Using default.\n"
+    fi
+
     rm -f /etc/motd && touch /etc/motd
-    mkdir -p /root/.ssh && chmod 700 /root/.ssh
-    touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys && ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N '' > /dev/null 2>&1
+
+    # --- Root SSH Setup ---
+    mkdir -p /root/.ssh
+    chmod 700 /root/.ssh
+    touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+    # Force overwrite of SSH key if it exists
+    ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N '' <<<$'\n' > /dev/null 2>&1
+
+    # --- Target User SSH Setup ---
     local USER_HOME
-    USER_HOME=$(eval echo ~$TARGET_USER)
-    su - "$TARGET_USER" -c "mkdir -p ~/.ssh && ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N ''" > /dev/null 2>&1 && \
-    su - "$TARGET_USER" -c "touch ~/.ssh/authorized_keys" > /dev/null 2>&1 && \
-    chmod 700 "$USER_HOME/.ssh" && \
+    USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
+    
+    su - "$TARGET_USER" -c "mkdir -p ~/.ssh; \
+                           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' <<<\$'\n' >/dev/null 2>&1; \
+                           touch ~/.ssh/authorized_keys"
+                           
+    chmod 700 "$USER_HOME/.ssh"
     chmod 600 "$USER_HOME/.ssh/authorized_keys"
+
     printf "\n\e[1;34m--- SSH Configuration Complete ---\e[0m\n"
 }
 
