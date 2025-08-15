@@ -156,7 +156,7 @@ main() {
     for SERVICE in $SERVICES
     do
         $SERVICE
-        sleep 15
+        sleep 4
     done
 }
 
