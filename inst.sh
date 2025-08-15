@@ -2,9 +2,7 @@
 # SCRIPT TO BUILD A PRODUCTION AND DEVELOPMENT SERVER FOLLOWING THE SPIRAL PATTERN
 
 # --- Script Setup ---
-# Move to the script's 'dep' subdirectory, making it runnable from anywhere.
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-cd "$SCRIPT_DIR/dep"
+cd $PWD/dep
 
 # Disable bash history for the session
 unset HISTFILE
