@@ -150,7 +150,6 @@ others() {
 main() {
     SERVICES="
     network
-    firewall
     dhcp
     dns
     ntp
