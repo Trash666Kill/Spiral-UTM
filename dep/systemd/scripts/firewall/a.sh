@@ -143,7 +143,6 @@ gateway() {
 main() {
     SERVICES="
     ip_forwarding
-    ids
     restart_nftables
     flush_nftables
     main_table
