@@ -10,7 +10,7 @@ set -e
 
 # Paths to the scripts
 NETWORK_SCRIPT="/root/.services/network.sh"
-FIREWALL_SCRIPT="/root/.services/firewall.sh"
+FIREWALL_FOLDER="/root/.services/firewall"
 VIRTUAL_MACHINE_SCRIPT="/root/.services/virtual-machine.sh"
 CONTAINER_SCRIPT="/root/.services/container.sh"
 
@@ -33,23 +33,19 @@ network() {
     fi
 }
 
+# Function to orchestrate the firewall levels
 firewall() {
-    if [[ -f "$FIREWALL_SCRIPT" ]]; then
-        if [[ -x "$FIREWALL_SCRIPT" ]]; then
-            printf "\e[33m*\e[0m Running $FIREWALL_SCRIPT...\n"
-            bash "$FIREWALL_SCRIPT"
-            if [[ $? -ne 0 ]]; then
-                printf "\e[31m*\e[0m Error: $FIREWALL_SCRIPT failed to execute successfully.\n"
-                exit 1
-            fi
-        else
-            printf "\e[31m*\e[0m Error: $FIREWALL_SCRIPT does not have execute permission.\n"
-            exit 1
-        fi
-    else
-        printf "\e[31m*\e[0m Error: $FIREWALL_SCRIPT not found.\n"
-        exit 1
-    fi
+    # Array of firewall scripts
+    scripts=(
+        "$FIREWALL_FOLDER/a.sh"
+        "$FIREWALL_FOLDER/b.sh"
+    )
+
+    # Loop through each script and execute it
+    for script in "${scripts[@]}"; do
+        bash "$script"
+        sleep 6
+    done
 }
 
 dhcp() {
@@ -130,6 +126,7 @@ others() {
 main() {
     SERVICES="
     network
+    firewall
     dhcp
     dns
     ntp
