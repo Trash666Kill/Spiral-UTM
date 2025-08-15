@@ -1,0 +1,391 @@
+#!/bin/bash
+cd $PWD/Repo
+(
+user=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+echo -e "\e[32m**DELETING USER "$user"**\e[0m"
+userdel -r "$user"
+)
+echo -e "\e[32m**ENTER A PASSWORD FOR THE ROOT USER**:\e[0m"
+passwd root
+echo -e "\e[32m**ENTER A PASSWORD FOR THE EMPEROR USER**:\e[0m"
+groupadd -g 1001 emperor
+useradd -m -u 1001 -g 1001 -c "Emperor" -s /bin/bash emperor
+passwd emperor
+(
+    hostname="SRV$(shuf -i 10000-99999 -n 1)"
+    echo -e "\e[32m**HOSTNAME GENERATED: $hostname**\e[0m"
+    
+    rm -v /etc/hostname
+    echo "$hostname" > /etc/hostname
+    
+    rm -v /etc/hosts
+    echo "127.0.0.1       localhost
+127.0.1.1       $hostname
+
+::1     localhost ip6-localhost ip6-loopback
+ff02::1 ip6-allnodes
+ff02::2 ip6-allrouters" > /etc/hosts
+)
+# SO Repositore
+repo(){
+echo -e "\e[32m**ADDING NON-FREE REPOSITORIES**\e[0m"
+rm -v /etc/apt/sources.list
+(
+printf '#
+deb http://deb.debian.org/debian/ bookworm main non-free non-free-firmware
+deb-src http://deb.debian.org/debian/ bookworm main non-free non-free-firmware
+#
+deb http://security.debian.org/debian-security bookworm-security main non-free non-free-firmware
+deb-src http://security.debian.org/debian-security bookworm-security main non-free non-free-firmware
+#
+deb http://deb.debian.org/debian/ bookworm-updates main non-free non-free-firmware
+deb-src http://deb.debian.org/debian/ bookworm-updates main non-free non-free-firmware
+#
+#deb http://deb.debian.org/debian bookworm-backports main non-free
+#' > /etc/apt/sources.list
+apt update
+)
+}
+# Packages
+common="sudo vim sshfs nfs-common chrony unzip xz-utils sshpass bzip2 python3-apt screen htop sysstat stress hdparm tree curl wget net-tools tcpdump traceroute iperf ethtool geoip-bin speedtest-cli nload autossh socat"
+workstation="cryptsetup smartmontools uuid pigz passwd lm-sensors hdparm x11-xkb-utils bc fwupd tree pm-utils acpi acpid cpulimit btrfs-progs ntfs-3g dosfstools rsync nfs-kernel-server"
+server="samba"
+graphics="nvidia-driver firmware-amd-graphics"
+firmware="firmware-misc-nonfree firmware-realtek firmware-atheros"
+hypervisor="lxc qemu-kvm libvirt0 bridge-utils libvirt-daemon-system dnsmasq"
+# Environment Setting
+user=$(grep 1001 /etc/passwd | cut -f 1 -d ":")
+directories(){
+echo -e "\e[32m**CREATING DIRECTORIES**\e[0m"
+mkdir -pv /etc/scripts/scheduled/virsh
+mkdir -pv /var/log/clamav/daily
+mkdir -v /var/log/virsh
+mkdir -v /var/log/lxc
+mkdir -v /var/log/rc.local
+chown $user:$user -R /var/log/rc.local
+mkdir -v /var/log/rsync
+chown $user:$user -R /var/log/rsync
+mkdir -v /root/Temp
+mkdir -v /root/.isolation
+mkdir -v /root/.crypt
+mkdir -v /mnt/Temp
+mkdir -pv /mnt/Local/USB/A
+mkdir -v /mnt/Local/USB/B
+mkdir -v /mnt/Local/Container-A
+mkdir -v /mnt/Local/Container-B
+mkdir -pv /mnt/Remote/Servers
+chown $user:$user -R /mnt
+mkdir -v /home/$user/Temp
+mkdir -v /home/$user/.ssh
+mkdir -v /root/.ssh
+chown $user:$user -R /home/$user
+}
+base(){
+echo -e "\e[32m**SETTING UP BASE**\e[0m"
+/sbin/usermod -aG sudo $user
+systemctl disable --now dnsmasq
+systemctl disable --now libvirtd
+systemctl disable --now lxc
+systemctl mask lxc-net
+systemctl disable --now nfs-kernel-server
+systemctl disable --now smbd
+systemctl disable --now systemd-timesyncd
+systemctl disable --now chrony
+(
+    printf '#!/bin/sh
+/etc/scripts/firewall.sh &
+sleep 02
+/etc/scripts/network.sh &
+sleep 04
+/etc/scripts/mount.sh &
+sleep 08
+/etc/scripts/filesharing.sh &
+sleep 02
+/etc/scripts/dnsmasq.sh &
+sleep 02
+/etc/scripts/chrony.sh &
+sleep 02
+/etc/scripts/kvm.sh &
+sleep 04
+/etc/scripts/lxc.sh &
+#sleep 02
+#/etc/scripts/others.sh &' > /etc/rc.local
+)
+chmod 755 /etc/rc.local
+cp -v scripts/*.sh /etc/scripts/
+chmod 700 /etc/scripts/*.sh
+rm -v /etc/systemd/timesyncd.conf
+rm -v /etc/network/interfaces
+chattr -i /etc/resolv.conf
+rm -v /etc/resolv.conf
+(
+    printf 'nameserver 10.0.6.62' > /etc/resolv.conf
+)
+chattr +i /etc/resolv.conf
+rm -v /etc/dnsmasq.conf
+(
+    printf 'listen-address=10.0.6.62
+dhcp-range=10.0.6.51,10.0.6.61,12h
+dhcp-option=tag:gw375993,15,%s
+dhcp-option=tag:%s,42,10.0.6.62
+#server=/example.local.br/172.30.100.6 #Bypass for domain lookup on specific upstream DNS server
+no-hosts
+domain-needed
+bogus-priv
+dnssec
+cache-size=1024
+conf-file=/usr/share/dnsmasq-base/trust-anchors.conf
+resolv-file=/etc/dnsmasq.d/config/resolv
+addn-hosts=/etc/dnsmasq.d/config/hosts' "$(hostname)" "$(hostname)" > /etc/dnsmasq.d/"$(hostname)".conf
+)
+mkdir -v /etc/dnsmasq.d/config
+(
+    printf 'nameserver 127.0.0.1
+nameserver 9.9.9.9
+nameserver 208.67.222.222' > /etc/dnsmasq.d/config/resolv
+)
+(
+    printf "10.0.6.62 %s.gw375993\n" "$(hostname)" > /etc/dnsmasq.d/config/hosts
+)
+export TZ='America/Sao_Paulo'
+rm -v /etc/localtime
+cp -v /usr/share/zoneinfo/America/Sao_Paulo /etc/localtime
+timedatectl set-timezone "America/Sao_Paulo"
+(
+    sed -i '/^pool 2\.debian\.pool\.ntp\.org iburst/d' /etc/chrony/chrony.conf
+printf '# Upstream NTP Servers
+pool a.st1.ntp.br iburst
+pool b.st1.ntp.br iburst
+pool 200.186.125.195 iburst
+
+# Listen and respond interface
+allow all' >> /etc/chrony/chrony.conf
+)
+(
+    printf '#/mnt/Local/Container-A 172.16.10.2(rw,sync,crossmnt,no_subtree_check,no_root_squash)' > /etc/exports
+)
+rm -v /etc/default/lxc-net
+rm -v /etc/lxc/default.conf
+(
+    printf 'lxc.net.0.type = veth
+lxc.net.0.link = gw099324
+lxc.net.0.flags = up
+
+lxc.apparmor.profile = generated
+lxc.apparmor.allow_nesting = 1' > /etc/lxc/default.conf
+)
+(
+rm -v /etc/ssh/sshd_config
+cp -v sshd_config /etc/ssh
+chmod 644 /etc/ssh/sshd_config
+rm -v /etc/motd && touch /etc/motd
+)
+user=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+cp -v avscan.sh /etc/scripts/scheduled; chmod +x /etc/scripts/scheduled/avscan.sh
+cp -v sync.sh /etc/scripts/scheduled; chmod +x /etc/scripts/scheduled/sync.sh
+cp -v useful /etc
+ln -s /etc/useful /home/$user/.useful
+ln -s /etc/useful /root/.useful
+chmod 700 /home/$user/.ssh
+su - $user -c "echo | touch /home/$user/.ssh/authorized_keys"
+chmod 600 /home/$user/.ssh/authorized_keys
+su - $user -c "echo | ssh-keygen -t rsa -b 4096 -N '' <<<$'\n'" > /dev/null 2>&1
+chmod 600 /root/.isolation
+chmod 600 /root/.crypt
+chmod 600 /root/.ssh
+touch /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+ssh-keygen -t rsa -b 4096 -N '' <<<$'\n' > /dev/null 2>&1
+}
+de(){
+echo -e "\e[32m**SETTING UP THE DESKTOP ENVIRONMENT**\e[0m"
+rm -v /etc/lightdm/lightdm-gtk-greeter.conf
+cp -v lightdm-gtk-greeter.conf /etc/lightdm
+cp -v default.jpg /usr/share/wallpapers
+tar -xvf 01-Qogir.tar.xz -C /usr/share/icons > /dev/null 2>&1
+tar -xvf Arc-Dark.tar.xz -C /usr/share/themes > /dev/null 2>&1
+cp -v debian-swirl.png /usr/share/icons/default
+mkdir -pv /etc/X11/xorg.conf.d
+cp -v 40-libinput.conf /etc/X11/xorg.conf.d
+echo -e "\e[32m**$user**\e[0m"
+rm -r /home/$user/.config
+cp -vr config /home/$user/.config
+cp -v gtkrc-2.0 /home/$user/.gtkrc-2.0
+mkdir -pv /home/$user/Pictures/Wallpapers
+mkdir -v /home/$user/Pictures/Screenshots
+mkdir -v /home/$user/Music
+mkdir -v /home/$user/Documents
+mkdir -v /home/$user/Videos
+mkdir -v /home/$user/.virt
+chown $user:$user -R /home/$user
+chown $user:$user /usr/share/wallpapers/default.jpg
+}
+optde(){
+while true; do
+clear
+read -p "**DO YOU WANT TO INSTALL GRAPHICAL INTERFACE? [Y/N]**" x
+echo -e "================================================"
+case "$x" in
+y)
+apt install -qq $de
+de
+echo -e "\e[32mFINISHED
+================================================\e[0m"
+sleep 3s
+exit 0
+;;
+n)
+echo -e "\e[32mFINISHED
+================================================\e[0m"
+sleep 3s
+exit 0
+;;
+*) echo -e "\e[32m**INVALID OPTION!**\e[0m"
+esac
+done
+}
+chassis(){
+htype=$(hostnamectl chassis)
+while true; do
+clear
+echo -e "\e[32m**$htype**\e[0m"
+case "$htype" in
+laptop)
+printf 'Section "InputClass"
+        Identifier "libinput touchpad catchall"
+        MatchIsTouchpad "on"
+        MatchDevicePath "/dev/input/event*"
+        Driver "libinput"
+        Option "Tapping" "on"
+EndSection' > /etc/X11/xorg.conf.d/40-libinput.conf
+printf '[D-BUS Service]
+Name=org.freedesktop.Notifications
+Exec=/usr/lib/notification-daemon/notification-daemon' > /usr/share/dbus-1/services/org.freedesktop.Notifications.service
+sleep 3
+exit 0
+;;
+desktop)
+sleep 3
+exit 0
+esac
+done
+}
+# Menu
+while true; do
+clear
+echo -e "\e[32m================================================
+WELCOME TO THE POST INSTALLATION SCRIPT FOR DEBIAN MINIMAL. CHOOSE THE TYPE OF INSTALLATION YOU WANT:
+
+1) Workstation
+
+2) Server
+
+3) Exit
+
+================================================\e[0m"
+
+read -p "ENTER THE DESIRED INSTALLATION TYPE AND START IT BY PRESSING THE ENTER KEY: " x
+echo -e "\e[32m($x)
+================================================\e[0m"
+case "$x" in
+1)
+echo -e "\e[32m**INSTALLING PACKAGES**\e[0m"
+repo
+apt install -qq $common $workstation $de $hypervisor $firmware
+directories
+base
+{
+echo -e "\e[32m**SETTING UP HYPERVISOR**\e[0m"
+user=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+cpu=$(lscpu | grep 'Vendor ID' | cut -f 2 -d ":" | sed -n 1p | awk '{$1=$1}1')
+gpasswd libvirt -a $user
+touch /etc/modprobe.d/kvm.conf
+while true; do
+clear
+echo -e "\e[32m**$cpu**\e[0m"
+case "$cpu" in
+GenuineIntel)
+#Nested Intel processors
+echo 'options kvm_intel nested=1' >> /etc/modprobe.d/kvm.conf
+/sbin/modprobe -r kvm_intel
+/sbin/modprobe kvm_intel
+sleep 3
+de
+chassis
+echo -e "\e[32mFINISHED
+================================================\e[0m"
+sleep 3
+exit 0
+;;
+AuthenticAMD)
+#Nested AMD processors
+echo 'options kvm_amd nested=1' >> /etc/modprobe.d/kvm.conf
+/sbin/modprobe -r kvm_amd
+/sbin/modprobe kvm_amd nested=1
+sleep 3
+de
+chassis
+echo -e "\e[32mFINISHED
+================================================\e[0m"
+sleep 3
+exit 0
+;;
+*) echo -e "\e[32mUNKNOWN OR UNSUPPORTED CPU ARCHITECTURE\e[0m"
+sleep 3
+de
+echo -e "\e[32mFINISHED
+================================================\e[0m"
+exit 0
+esac
+done
+}
+;;
+2)
+echo -e "\e[32m**INSTALLING PACKAGES**\e[0m"
+repo
+apt install -qq $common $workstation $hypervisor $firmware $server
+directories
+base
+{
+echo -e "\e[32m**SETTING UP HYPERVISOR**\e[0m"
+user=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+cpu=$(lscpu | grep 'Vendor ID' | cut -f 2 -d ":" | sed -n 1p | awk '{$1=$1}1')
+gpasswd libvirt -a $user
+touch /etc/modprobe.d/kvm.conf
+while true; do
+clear
+echo -e "\e[32m**$cpu**\e[0m"
+case "$cpu" in
+GenuineIntel)
+#Nested Intel processors
+echo 'options kvm_intel nested=1' >> /etc/modprobe.d/kvm.conf
+/sbin/modprobe -r kvm_intel
+/sbin/modprobe kvm_intel
+sleep 3
+optde
+;;
+AuthenticAMD)
+#Nested AMD processors
+echo 'options kvm_amd nested=1' >> /etc/modprobe.d/kvm.conf
+/sbin/modprobe -r kvm_amd
+/sbin/modprobe kvm_amd nested=1
+sleep 3
+optde
+;;
+*) echo -e "\e[32mUNKNOWN OR UNSUPPORTED CPU ARCHITECTURE\e[0m"
+sleep 3
+optde
+esac
+done
+}
+;;
+3)
+echo -e "\e[32mLeaving...
+================================================\e[0m"
+sleep 3
+clear
+exit 0
+;;
+*) echo -e "\e[32mInvalid option!\e[0m"
+esac
+done
