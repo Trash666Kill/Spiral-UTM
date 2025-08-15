@@ -246,6 +246,8 @@ EOF
     printf "\n\e[1;34m--- Network Configuration Complete ---\e[0m\n"
 }
 
+cd "$SCRIPT_DIR/dep"
+
 # Function to set up the firewall.
 setup_firewall() {
     printf "\n\e[1;34m--- Starting Firewall Setup ---\e[0m\n"
