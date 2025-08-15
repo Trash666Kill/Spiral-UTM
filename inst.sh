@@ -378,7 +378,7 @@ schedule_post_reboot_cleanup() {
 ### END INIT INFO
 pkill -u %s
 userdel -r %s
-rm -rf /root/WS
+rm -rf /root/UTM
 rm -f /etc/init.d/later
 ' "$INITIAL_USER" "$INITIAL_USER"
     printf "%s" "$SCRIPT_CONTENT" > /etc/init.d/later && chmod +x /etc/init.d/later
