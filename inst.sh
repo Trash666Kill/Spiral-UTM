@@ -27,8 +27,8 @@ declare -g TARGET_USER
 # Function to update repository lists and upgrade installed packages.
 update() {
     printf "\n\e[1;34m--- Starting System Update ---\e[0m\n"
-    apt-get -y update > /dev/null 2>&1
-    apt-get -y upgrade > /dev/null 2>&1
+    apt-get -y -qq update
+    apt-get -y -qq upgrade
     printf "\n\e[1;34m--- System Update Complete ---\e[0m\n"
 }
 
@@ -103,7 +103,7 @@ ff02::2 ip6-allrouters"
 setup_target_user() {
     TARGET_USER="sysop"
     printf "\n\e[1;34m--- Starting User Configuration ---\e[0m\n"
-    apt-get -y install sudo > /dev/null 2>&1
+    apt-get -y -qq install sudo
     sed -i '$ a unset HISTFILE\nexport HISTSIZE=0\nexport HISTFILESIZE=0\nexport HISTCONTROL=ignoreboth' /etc/profile
     groupadd -g 1001 sysop > /dev/null 2>&1
     useradd -m -u 1001 -g 1001 -c "SysOp" -s /bin/bash sysop > /dev/null 2>&1
@@ -114,7 +114,7 @@ setup_target_user() {
 # Function to generate and set system passwords.
 set_passwords() {
     printf "\n\e[1;34m--- Starting Password Configuration ---\e[0m\n"
-    apt-get -y install pwgen > /dev/null 2>&1
+    apt-get -y -qq install pwgen
     local PASSWORD_ROOT; PASSWORD_ROOT=$(pwgen -s 18 1)
     local PASSWORD_TARGET; PASSWORD_TARGET=$(pwgen -s 18 1)
     echo "root:$PASSWORD_ROOT" | chpasswd
@@ -131,7 +131,7 @@ set_passwords() {
 packages() {
     install_package_category() {
         local category_name="$1"; local packages_to_install="$2"
-        apt-get -y install $packages_to_install > /dev/null 2>&1
+        apt-get -y -qq install $packages_to_install
     }
     printf "\n\e[1;34m--- Starting Package Installation ---\e[0m\n"
     install_package_category "Text Editor" "vim"
@@ -176,13 +176,13 @@ setup_trigger_service() {
 setup_network_services() {
     setup_dhcp() {
         printf "\n\e[1;36m---  Configuring DHCP (KEA)  ---\e[0m\n"
-        apt-get -y install kea-dhcp4-server > /dev/null 2>&1
+        apt-get -y -qq install kea-dhcp4-server
         rm -f /etc/kea/kea-dhcp4.conf
         cp DHCP/kea-dhcp4.conf /etc/kea/
     }
     setup_ntp() {
         printf "\n\e[1;36m---  Configuring NTP (Chrony)  ---\e[0m\n"
-        apt-get install -y chrony > /dev/null 2>&1
+        apt-get -y -qq install chrony
         local CHRONY_CONFIG_ADDITIONS
         CHRONY_CONFIG_ADDITIONS=$(cat <<'EOF'
 
@@ -200,7 +200,7 @@ EOF
     }
     setup_dns() {
         printf "\n\e[1;36m---  Configuring DNS (BIND9)  ---\e[0m\n"
-        apt-get -y install bind9 bind9-utils bind9-doc dnsutils tcpdump cron > /dev/null 2>&1
+        apt-get -y -qq install bind9 bind9-utils bind9-doc dnsutils tcpdump cron
         rm -r /etc/bind
         mkdir -p /etc/bind/{zones,keys} && chmod 2755 /etc/bind && cd /etc/bind && chown bind:bind /etc/bind/* && chmod 755 zones && chmod 750 keys
         rndc-confgen -a > /dev/null 2>&1 && chown bind:bind rndc.key && chmod 640 rndc.key
@@ -238,7 +238,7 @@ EOF
 # Function to set up the firewall.
 setup_firewall() {
     printf "\n\e[1;34m--- Starting Firewall Setup ---\e[0m\n"
-    apt-get -y install nftables > /dev/null 2>&1
+    apt-get -y -qq install nftables
     systemctl disable --now nftables --quiet
     cp -r systemd/scripts/firewall /root/.services/
     chmod 700 /root/.services/firewall/*
@@ -249,7 +249,7 @@ setup_firewall() {
 setup_hypervisor() {
     setup_kvm() {
         printf "\n\e[1;36m---  Configuring KVM Hypervisor  ---\e[0m\n"
-        apt-get -y install qemu-kvm libvirt0 libvirt-daemon-system > /dev/null 2>&1
+        apt-get -y -qq install qemu-kvm libvirt0 libvirt-daemon-system
         systemctl disable --now libvirtd --quiet
         gpasswd libvirt -a "$TARGET_USER" > /dev/null 2>&1
         local CPU
@@ -267,7 +267,7 @@ setup_hypervisor() {
     }
     setup_lxc() {
         printf "\n\e[1;36m---  Configuring LXC Containers  ---\e[0m\n"
-        apt-get -y install lxc > /dev/null 2>&1
+        apt-get -y -qq install lxc
         sed -i '/^\s*}$/i \ \ /mnt\/Local\/Container\/A\/lxc\/** rw,\n\ \ mount options=(rw, move) -> /mnt\/Local\/Container\/A\/lxc\/**,' /etc/apparmor.d/usr.bin.lxc-copy && apparmor_parser -r /etc/apparmor.d/usr.bin.lxc-copy > /dev/null 2>&1
         systemctl disable --now lxc --quiet && systemctl disable --now lxc-net --quiet && systemctl mask lxc-net --quiet
         rm -f /etc/default/lxc-net && rm -f /etc/lxc/default.conf
@@ -290,7 +290,7 @@ lxc.apparmor.allow_nesting = 1'
 # Function to set up and configure the SSH service and keys.
 setup_ssh() {
     printf "\n\e[1;34m--- Starting SSH Configuration ---\e[0m\n"
-    apt-get -y install openssh-server sshfs autossh > /dev/null 2>&1
+    apt-get -y -qq install openssh-server sshfs autossh
     rm -f /etc/ssh/sshd_config && cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
     rm -f /etc/motd && touch /etc/motd
     mkdir -p /root/.ssh && chmod 700 /root/.ssh
@@ -360,7 +360,7 @@ rm -f /etc/init.d/later
 # Function to perform final cleanup and prompt for a system reboot.
 finalize_setup() {
     printf "\n\e[1;34m--- Finalizing Setup ---\e[0m\n"
-    apt-get -y autoremove > /dev/null 2>&1
+    apt-get -y -qq autoremove
     rm -f /etc/network/interfaces
     printf "\n\e[1;32m✅ INSTALLATION COMPLETED SUCCESSFULLY!\e[0m\n"
     local response
