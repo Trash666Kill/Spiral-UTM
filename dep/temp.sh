@@ -308,6 +308,37 @@ setup_spawn_service() {
     log_success "Spawn Service Configuration Complete"
 }
 
+configure_network_script() {
+    log_info "Setting up and Configuring the Dynamic Network Script"
+    
+    # Define o caminho de origem e de destino para o script
+    local source_script_path="$DEP_DIR/systemd/scripts/network.sh"
+    local dest_script_path="/root/.services/network.sh"
+
+    # --- ETAPA 1: COPIAR E APLICAR PERMISSÕES ---
+    log_step "Copying network.sh to $dest_script_path..."
+    
+    # Verifica se o arquivo de origem existe antes de copiar
+    if [[ ! -f "$source_script_path" ]]; then
+        log_error "Source network script not found at '$source_script_path'. Cannot proceed."
+        exit 1
+    fi
+    
+    # Copia o arquivo e define as permissões
+    cp "$source_script_path" "$dest_script_path"
+    chmod 700 "$dest_script_path"
+    log_success "network.sh copied and permissions set."
+
+    # --- ETAPA 2: CONFIGURAR O SCRIPT COPIADO ---
+    log_step "Applying dynamic network values..."
+
+    # Usa '|' como delimitador para o sed, pois as variáveis contêm '/'
+    sed -i "s|ip addr add 0.0.0.0/24 dev gw854807|ip addr add $WAN0_IPV4/$WAN0_MASK dev $WAN0|" "$dest_script_path"
+    sed -i "s|ip route add default via 0.0.0.0 dev gw854807|ip route add default via $WAN0_GATEWAY dev $WAN0|" "$dest_script_path"
+    
+    log_success "Dynamic network script configured successfully."
+}
+
 # --- Network Services Functions ---
 setup_dhcp() {
     log_step "Configuring DHCP (KEA)"
@@ -553,6 +584,7 @@ main() {
     setup_ssh
     setup_spawn_service
     setup_network_services
+    configure_network_script
     setup_firewall
     setup_hypervisor
     setup_trigger_service
