@@ -124,6 +124,13 @@ setup_interfaces() {
     WAN0_MASK=$(echo "$ip_info" | cut -d'/' -f2)
     WAN0_GATEWAY=$(ip route | grep default | grep "dev $WAN0" | awk '{print $3}')
 
+    # --- INÍCIO DA MODIFICAÇÃO: Exibe os detalhes da rede WAN0 ---
+    printf "\n\e[1;34m--- WAN0 Network Details ---\e[0m\n"
+    printf "\e[32m*\e[0m \e[1;37mIPv4 Address:\e[0m %s\n" "$WAN0_IPV4"
+    printf "\e[32m*\e[0m \e[1;37mSubnet Mask:\e[0m /%s\n" "$WAN0_MASK"
+    printf "\e[32m*\e[0m \e[1;37mGateway:\e[0m      %s\n" "$WAN0_GATEWAY"
+    # --- FIM DA MODIFICAÇÃO ---
+
     mapfile -t down_interfaces < <(ip -o link show | awk -F': ' '/state DOWN/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}')
     if [[ ${#down_interfaces[@]} -gt 0 ]]; then
         log_step "The following interfaces are inactive. Choose one for LAN0:"
@@ -139,6 +146,22 @@ setup_interfaces() {
             log_warning "Invalid option. No LAN0 interface was configured."
         fi
     fi
+
+    # --- INÍCIO DA MODIFICAÇÃO: Escreve as variáveis em /etc/environment ---
+    log_step "Writing network variables to /etc/environment..."
+    # Garante que o arquivo exista
+    touch /etc/environment
+    # Remove entradas antigas para evitar duplicatas
+    sed -i '/^WAN0=/d' /etc/environment
+    sed -i '/^LAN0=/d' /etc/environment
+    
+    # Adiciona as novas variáveis
+    echo "WAN0=$WAN0" >> /etc/environment
+    if [[ -n "${LAN0-}" ]]; then
+      echo "LAN0=$LAN0" >> /etc/environment
+    fi
+    # --- FIM DA MODIFICAÇÃO ---
+
     log_success "Network Interface Configuration Complete"
 }
 
