@@ -11,7 +11,6 @@ set -e
 # Paths to the scripts
 NETWORK_SCRIPT="/root/.services/network.sh"
 FIREWALL_SCRIPT="/root/.services/firewall.sh"
-MOUNT_SCRIPT="/root/.services/mount.sh"
 VIRTUAL_MACHINE_SCRIPT="/root/.services/virtual-machine.sh"
 CONTAINER_SCRIPT="/root/.services/container.sh"
 
@@ -76,25 +75,6 @@ ntp() {
     systemctl restart "$SERVICE"
     if [[ $? -ne 0 ]]; then
         printf "\e[31m*\e[0m Error: Failed to restart $SERVICE.\n"
-        exit 1
-    fi
-}
-
-mount() {
-    if [[ -f "$MOUNT_SCRIPT" ]]; then
-        if [[ -x "$MOUNT_SCRIPT" ]]; then
-            printf "\e[33m*\e[0m Running $MOUNT_SCRIPT...\n"
-            bash "$MOUNT_SCRIPT"
-            if [[ $? -ne 0 ]]; then
-                printf "\e[31m*\e[0m Error: $MOUNT_SCRIPT failed to execute successfully.\n"
-                exit 1
-            fi
-        else
-            printf "\e[31m*\e[0m Error: $MOUNT_SCRIPT does not have execute permission.\n"
-            exit 1
-        fi
-    else
-        printf "\e[31m*\e[0m Error: $MOUNT_SCRIPT not found.\n"
         exit 1
     fi
 }
