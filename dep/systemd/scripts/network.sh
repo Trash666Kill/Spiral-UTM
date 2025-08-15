@@ -12,12 +12,10 @@ set -e
 # Physical interfaces
 interfaces() {
     wan0() {
-        WAN0=eth0
         ip link set dev "$WAN0" up
     }
 
     lan0() {
-        LAN0=eth1
         ip link set dev "$LAN0" up
     }
 
