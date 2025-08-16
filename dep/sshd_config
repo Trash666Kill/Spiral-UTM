@@ -2,7 +2,6 @@ Include /etc/ssh/sshd_config.d/*.conf
 
 ListenAddress 172.16.2.253
 Port 444
-#AllowUsers emperor@172.16.2.0/24
 #AllowUsers emperor@172.16.14.0/24
 AllowTcpForwarding no
 
