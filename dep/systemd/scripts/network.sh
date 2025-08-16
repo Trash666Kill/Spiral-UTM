@@ -115,7 +115,6 @@ subsidiary_gw() {
     vlan710
     vlan714
     vlan718
-    vlan910
     gw266884
 }
 
