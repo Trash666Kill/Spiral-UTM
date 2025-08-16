@@ -47,13 +47,13 @@ main_gw() {
         ip addr add 10.0.6.62/26 dev gw375993
     }
 
-    # SSH, SNMP, etc via LAN
+    # APIPA
     gw471042() {
         brctl addbr gw471042
         brctl stp gw471042 on
         brctl addif gw471042 "$LAN0"
         ip link set dev gw471042 up
-        ip addr add 172.16.2.253/30 dev gw471042
+        ip addr add 169.254.0.1/16 dev gw471042
     }
 
     # Call
