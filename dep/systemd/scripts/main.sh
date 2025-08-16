@@ -67,7 +67,7 @@ dhcp() {
 }
 
 dns() {
-    local SERVICE=dnsmasq
+    local SERVICE=named
     systemctl restart "$SERVICE"
     if [[ $? -ne 0 ]]; then
         printf "\e[31m*\e[0m Error: Failed to restart $SERVICE.\n"
@@ -76,7 +76,7 @@ dns() {
 }
 
 ntp() {
-    local SERVICE=systemd-timesyncd
+    local SERVICE=chrony
     systemctl restart "$SERVICE"
     if [[ $? -ne 0 ]]; then
         printf "\e[31m*\e[0m Error: Failed to restart $SERVICE.\n"
@@ -136,12 +136,13 @@ main() {
     SERVICES="
     network
     ssh
+    ntp
     firewall
     dhcp
     dns
-    ntp
     virtual_machine
     container
+    others
     "
 
     for SERVICE in $SERVICES
