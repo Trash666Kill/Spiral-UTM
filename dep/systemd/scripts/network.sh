@@ -93,14 +93,10 @@ subsidiary_gw() {
     }
 
     #Workstation
-    gw266884() {
-        ip tuntap add tap910 mode tap
-        ip link set dev tap910 up
-        brctl addbr gw266884
-        brctl stp gw266884 on
-        brctl addif gw266884 tap910
-        ip link set dev gw266884 up
-        ip addr add 192.168.10.254/24 dev gw266884
+    vlan910() {
+        ip link add link "$LAN0" name vlan910 type vlan id 910
+        ip link set dev vlan910 up
+        ip addr add 192.168.10.254/24 dev vlan910
     }
 
     #DMZ
@@ -115,7 +111,8 @@ subsidiary_gw() {
     vlan710
     vlan714
     vlan718
-    gw266884
+    vlan910
+    vlan966
 }
 
 # Main function to orchestrate the setup
