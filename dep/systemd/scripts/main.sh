@@ -142,7 +142,6 @@ main() {
     dns
     virtual_machine
     container
-    others
     "
 
     for SERVICE in $SERVICES
