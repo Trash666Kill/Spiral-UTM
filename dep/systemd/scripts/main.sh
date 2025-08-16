@@ -33,6 +33,15 @@ network() {
     fi
 }
 
+ssh() {
+    local SERVICE=ssh
+    systemctl restart "$SERVICE"
+    if [[ $? -ne 0 ]]; then
+        printf "\e[31m*\e[0m Error: Failed to restart $SERVICE.\n"
+        exit 1
+    fi
+}
+
 # Function to orchestrate the firewall levels
 firewall() {
     # Array of firewall scripts
@@ -126,6 +135,7 @@ others() {
 main() {
     SERVICES="
     network
+    ssh
     firewall
     dhcp
     dns
