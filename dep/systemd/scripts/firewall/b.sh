@@ -22,11 +22,11 @@ switch() {
     # Child Functions
     subnet_80() {
         # DNAT Rules
-        nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 80 dnat to 172.16.6.0:80
+        nft add rule inet firelux prerouting iif "gw266884" ip daddr 192.168.10.0/24 tcp dport 80 dnat to 172.16.6.0:80
 
         # Forward Rules
-        nft add rule inet firelux forward iif "vlan910" oif "vlan76" tcp dport 80 accept
-        nft add rule inet firelux forward iif "vlan76" oif "vlan910" tcp sport 80 accept
+        nft add rule inet firelux forward iif "gw266884" oif "vlan76" tcp dport 80 accept
+        nft add rule inet firelux forward iif "vlan76" oif "gw266884" tcp sport 80 accept
     }
 
     # Call Child Functions
@@ -75,22 +75,22 @@ container() {
     nft add rule inet firelux forward iifname "vlan718" oifname "$WAN0" ip protocol tcp tcp dport {80, 443} accept
 }
 
-# Configure NAT and forwarding for Workstation (VLAN910)
+# Configure NAT and forwarding for Workstation (GW266884)
 workstation() {
     # Masquerade Rules
     nft add rule inet firelux postrouting ip saddr 192.168.10.0/24 oifname "$WAN0" masquerade
 
     # Forward Rules
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol icmp accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport {80, 443} accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport {8080, 5060} accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol udp udp dport {8080, 5060} accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport 4634 accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol udp udp dport 8443 accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport 587 accept
-    nft add rule inet firelux forward iifname "vlan910" oifname "$WAN0" ip protocol tcp tcp dport 993 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol icmp accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol udp udp dport 53 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport {80, 443} accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport {8080, 5060} accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol udp udp dport {8080, 5060} accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport 4634 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol udp udp dport 8443 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport 587 accept
+    nft add rule inet firelux forward iifname "gw266884" oifname "$WAN0" ip protocol tcp tcp dport 993 accept
 }
 
 # Main function to orchestrate the setup
