@@ -36,7 +36,7 @@ main_gw() {
         ip route add default via 0.0.0.0 dev gw854807
     }
 
-    # DNS, NTP, DHCP etc services of the real host
+    # DNS, NTP, etc services of the real host
     gw375993() {
         ip tuntap add tap16 mode tap
         ip link set dev tap16 up
@@ -44,7 +44,7 @@ main_gw() {
         brctl stp gw375993 on
         brctl addif gw375993 tap16
         ip link set dev gw375993 up
-        ip addr add 10.0.6.62/26 dev gw375993
+        ip addr add 10.0.6.1/32 dev gw375993
     }
 
     # APIPA
