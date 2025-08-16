@@ -32,8 +32,8 @@ main_gw() {
         brctl stp gw854807 on
         brctl addif gw854807 "$WAN0"
         ip link set dev gw854807 up
-        ip addr add 10.0.2.253/24 dev gw854807
-        ip route add default via 10.0.2.254 dev gw854807
+        ip addr add 0.0.0.0/24 dev gw854807
+        ip route add default via 0.0.0.0 dev gw854807
     }
 
     # DNS, NTP, DHCP etc services of the real host
