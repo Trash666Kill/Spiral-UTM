@@ -1,7 +1,7 @@
 Include /etc/ssh/sshd_config.d/*.conf
 
 ListenAddress 169.254.0.1
-ListenAddress 10.0.6.62
+ListenAddress 10.0.6.1
 Port 444
 AllowTcpForwarding no
 
