@@ -37,14 +37,10 @@ main_gw() {
     }
 
     # DNS, NTP, etc services of the real host
-    gw375993() {
+    tap16() {
         ip tuntap add tap16 mode tap
         ip link set dev tap16 up
-        brctl addbr gw375993
-        brctl stp gw375993 on
-        brctl addif gw375993 tap16
-        ip link set dev gw375993 up
-        ip addr add 10.0.6.1/32 dev gw375993
+        ip addr add 10.0.6.1/32 dev tap16
     }
 
     # APIPA
@@ -58,7 +54,7 @@ main_gw() {
 
     # Call
     gw854807
-    gw375993
+    tap16
     gw471042
 }
 
