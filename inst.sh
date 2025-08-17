@@ -293,7 +293,8 @@ setup_ssh() {
                            
     chmod 700 "$user_home/.ssh"
     chmod 600 "$user_home/.ssh/authorized_keys"
-    
+    systemctl disable --now ssh --quiet
+
     log_success "SSH Configuration Complete"
 }
 
@@ -344,6 +345,7 @@ setup_dhcp() {
     log_step "Configuring DHCP (KEA)"
     run_apt install kea-dhcp4-server
     cp DHCP/kea-dhcp4.conf /etc/kea/
+    systemctl disable --now kea-dhcp4-server --quiet
 }
 
 setup_ntp() {
@@ -362,6 +364,7 @@ setup_ntp() {
 	EOF
     sed -i '/^pool 2\.debian\.pool\.ntp\.org iburst/d' /etc/chrony/chrony.conf
     systemctl restart chrony
+    systemctl disable --now chrony --quiet
 }
 
 setup_dns() {
