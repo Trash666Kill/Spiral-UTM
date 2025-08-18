@@ -140,7 +140,6 @@ main() {
     chains
     established_related
     host
-    gateway
     "
 
     for SERVICE in $SERVICES
