@@ -293,7 +293,7 @@ setup_ssh() {
                            
     chmod 700 "$user_home/.ssh"
     chmod 600 "$user_home/.ssh/authorized_keys"
-    systemctl disable --now ssh --quiet
+    systemctl disable ssh --quiet
 
     log_success "SSH Configuration Complete"
 }
