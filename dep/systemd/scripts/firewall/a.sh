@@ -130,18 +130,6 @@ host() {
     ssh
 }
 
-# Configure NAT and forwarding for Gateway (GW375993)
-gateway() {
-    # Masquerade Rules
-    nft add rule inet firelux postrouting ip saddr 10.0.6.0/26 oifname "$WAN0" masquerade
-
-    # Forward Rules
-    nft add rule inet firelux forward iifname "gw375993" oifname "$WAN0" ip protocol icmp accept
-    nft add rule inet firelux forward iifname "gw375993" oifname "$WAN0" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "gw375993" oifname "$WAN0" ip protocol tcp tcp dport 53 accept
-    nft add rule inet firelux forward iifname "gw375993" oifname "$WAN0" ip protocol tcp tcp dport {80, 443} accept
-}
-
 # Main function to orchestrate the setup
 main() {
     SERVICES="
