@@ -344,7 +344,7 @@ configure_network_script() {
 setup_dhcp() {
     log_step "Configuring DHCP (KEA)"
     run_apt install kea-dhcp4-server
-    cp DHCP/kea-dhcp4.conf /etc/kea/
+    cp DHCP/kea-dhcp4.conf /etc/kea/ $$ chmod 755 /etc/kea
     systemctl disable --now kea-dhcp4-server --quiet
 }
 
