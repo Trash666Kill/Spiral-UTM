@@ -334,9 +334,9 @@ configure_network_script() {
     log_step "Applying dynamic network values..."
 
     # Usa '|' como delimitador para o sed, pois as variáveis contêm '/'
-    sed -i "s|ip addr add 0.0.0.0/24 dev gw854807|ip addr add $WAN0_IPV4/$WAN0_MASK dev $WAN0|" "$dest_script_path"
-    sed -i "s|ip route add default via 0.0.0.0 dev gw854807|ip route add default via $WAN0_GATEWAY dev $WAN0|" "$dest_script_path"
-    
+    sed -i "s|ip addr add 0.0.0.0/24 dev [^ ]*|ip addr add $WAN0_IPV4/$WAN0_MASK dev \1|" "$dest_script_path"
+    sed -i "s|ip route add default via 0.0.0.0 dev [^ ]*|ip route add default via $WAN0_GATEWAY dev \1|" "$dest_script_path"
+
     log_success "Dynamic network script configured successfully."
 }
 
