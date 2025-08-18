@@ -561,7 +561,7 @@ finalize_setup() {
     run_apt autoremove
     rm -f /etc/network/interfaces
     systemctl disable networking --quiet
-    printf "\n\e[1;32m✅ INSTALLATION COMPLETED SUCCESSFULLY!\e[0m\n"
+    printf "\n\e[1;32m✅ INSTALLATION COMPLETED SUCCESSFULLY!\e[0m\n\nTo access the UTM, you will need to connect it to a computer through the previously selected \e[1;32m$LAN0\e[0m port, set the fixed IP address \e[1;32m169.254.0.2/30\e[0m and access it via ssh using the command \e[1;32mssh -p 444 sysop@169.254.0.1\e[0m. After accessing, change the allowed IPv4 address in the ssh and firewall settings according to your preference.\n"
     local response
     read -p $'\n\e[33m?\e[0m DO YOU WANT TO RESTART NOW? (y/n): ' response
     if [[ "${response,,}" == "y" ]]; then
