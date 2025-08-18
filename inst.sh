@@ -560,6 +560,7 @@ finalize_setup() {
     log_info "Finalizing Setup"
     run_apt autoremove
     rm -f /etc/network/interfaces
+    systemctl disable networking
     printf "\n\e[1;32m✅ INSTALLATION COMPLETED SUCCESSFULLY!\e[0m\n"
     local response
     read -p $'\n\e[33m?\e[0m DO YOU WANT TO RESTART NOW? (y/n): ' response
