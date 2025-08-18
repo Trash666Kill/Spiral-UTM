@@ -113,11 +113,11 @@ host() {
 
     ssh() {
         # Filter Rules
-        nft add rule inet firelux input ip saddr 169.254.0.0 iif "gw471042" tcp dport 444 accept
-        nft add rule inet firelux output ip daddr 169.254.0.0 oif "gw471042" tcp sport 444 accept
+        nft add rule inet firelux input ip saddr 169.254.0.2 iif "gw471042" tcp dport 444 accept
+        nft add rule inet firelux output ip daddr 169.254.0.2 oif "gw471042" tcp sport 444 accept
         #
-        nft add rule inet firelux input ip saddr 192.168.10.0 iif "vlan910" tcp dport 444 accept
-        nft add rule inet firelux output ip daddr 192.168.10.0 oif "vlan910" tcp sport 444 accept
+        #nft add rule inet firelux input ip saddr 192.168.10.0 iif "vlan910" tcp dport 444 accept
+        #nft add rule inet firelux output ip daddr 192.168.10.0 oif "vlan910" tcp sport 444 accept
     }
 
     # Call Child Functions
