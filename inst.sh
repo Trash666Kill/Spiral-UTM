@@ -394,7 +394,7 @@ setup_dns() {
 	options {
 	    directory "/var/cache/bind";
 	    recursion yes; allow-query { any; };
-	    listen-on { any; }; listen-on-v6 { none; };
+	    listen-on { 10.0.6.1; }; listen-on-v6 { none; };
 	    forwarders { 1.1.1.1; 8.8.8.8; 9.9.9.9; };
 	    forward only; dnssec-validation auto;
 	};
