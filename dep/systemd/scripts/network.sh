@@ -49,7 +49,7 @@ main_gw() {
         brctl stp gw471042 on
         brctl addif gw471042 "$LAN0"
         ip link set dev gw471042 up
-        ip addr add 169.254.0.1/16 dev gw471042
+        ip addr add 169.254.0.1/30 dev gw471042
     }
 
     # Call
