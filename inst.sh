@@ -492,7 +492,7 @@ setup_lxc() {
     rm -f /etc/default/lxc-net
     cat > /etc/lxc/default.conf <<-EOF
 	lxc.net.0.type = veth
-	lxc.net.0.link = br_tap110
+	lxc.net.0.link = gw099324
 	lxc.net.0.flags = up
 	lxc.apparmor.profile = generated
 	lxc.apparmor.allow_nesting = 1
