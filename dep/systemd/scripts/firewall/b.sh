@@ -5,10 +5,10 @@
 # Close on any error
 set -e
 
-# Configure NAT and forwarding for Gateway (GW375993)
-gateway() {
+# Configure NAT and forwarding for Gateway (BR_TAP14)
+br_tap14() {
     # Masquerade Rules
-    nft add rule inet firelux postrouting ip saddr 10.0.6.0/26 oifname "gw854807" masquerade
+    nft add rule inet firelux postrouting ip saddr 10.0.4.0/28 oifname "gw854807" masquerade
 
     # Forward Rules
     nft add rule inet firelux forward iifname "gw375993" oifname "gw854807" ip protocol icmp accept
