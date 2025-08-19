@@ -86,6 +86,15 @@ subsidiary_gw() {
         ip link add link "$LAN0" name vlan718 type vlan id 718
         ip link set dev vlan718 up
         ip addr add 172.16.18.254/24 dev vlan718
+            br_vlan718() {
+                brctl addbr br_vlan718
+                brctl stp br_vlan718 on
+                brctl addif br_vlan718 vlan718
+                ip link set dev br_vlan718 up
+            }
+
+        # Call
+        br_vlan718
     }
 
     #Workstation
@@ -111,28 +120,11 @@ subsidiary_gw() {
     vlan966
 }
 
-# Virtual interfaces
-virtual() {
-    gw099324() {
-        ip tuntap add tap14 mode tap
-        ip link set dev tap14 up
-        brctl addbr gw099324
-        brctl stp gw099324 on
-        brctl addif gw099324 tap14
-        ip link set dev gw099324 up
-        ip addr add 10.0.4.14/28 dev gw099324
-    }
-
-    # Call
-    gw099324
-}
-
 # Main function to orchestrate the setup
 main() {
     interfaces
     main_gw
     subsidiary_gw
-    virtual
 }
 
 # Execute main function
