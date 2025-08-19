@@ -5,16 +5,16 @@
 # Close on any error
 set -e
 
-# Configure NAT and forwarding for Gateway (BR_TAP14)
-br_tap14() {
+# Configure NAT and forwarding for Gateway (GW099324)
+gw099324() {
     # Masquerade Rules
     nft add rule inet firelux postrouting ip saddr 10.0.4.0/28 oifname "gw854807" masquerade
 
     # Forward Rules
-    nft add rule inet firelux forward iifname "br_tap14" oifname "gw854807" ip protocol icmp accept
-    nft add rule inet firelux forward iifname "br_tap14" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "br_tap14" oifname "gw854807" ip protocol tcp tcp dport 53 accept
-    nft add rule inet firelux forward iifname "br_tap14" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
+    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol icmp accept
+    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol udp udp dport 53 accept
+    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
 # Configure NAT and forwarding for DMZ (VLAN966)
@@ -108,7 +108,7 @@ workstation() {
 # Main function to orchestrate the setup
 main() {
     SERVICES="
-    br_tap14
+    gw099324
     dmz
     switch
     server

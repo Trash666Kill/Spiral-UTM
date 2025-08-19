@@ -113,17 +113,17 @@ subsidiary_gw() {
 
 # Virtual interfaces
 virtual() {
-    br_tap14() {
+    gw099324() {
         ip tuntap add tap14 mode tap
         ip link set dev tap14 up
-        brctl addbr br_tap14
-        brctl stp br_tap14 on
-        brctl addif br_tap14 tap14
-        ip link set dev br_tap14 up
+        brctl addbr gw099324
+        brctl stp gw099324 on
+        brctl addif gw099324 tap14
+        ip link set dev gw099324 up
     }
 
     # Call
-    br_tap14
+    gw099324
 }
 
 # Main function to orchestrate the setup
