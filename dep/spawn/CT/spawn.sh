@@ -109,34 +109,6 @@ if [ $? -eq 0 ]; then
     sed -i '/lxc.net.0.hwaddr/d' "$lxc_config_path"
     echo "lxc.net.0.hwaddr = $MAC_ADDRESS" >> "$lxc_config_path"
 
-    reserve() {
-    # Obtém o endereço IP do container a partir do DNS
-    local IP_ADDRESS=$(/etc/spawn/CT/grepip.sh)
-
-    # Monta a string de reserva de DNS
-    RESULT="$MAC_ADDRESS,$IP_ADDRESS,$NEW_CT"
-    printf "\033[32m*\033[0m IP ADDRESS FIXED.\n"
-
-    # Modifica a configuração do dnsmasq para adicionar a reserva de IP
-    kill -SIGHUP $(pidof dnsmasq)
-    echo "$RESULT" >> /etc/dnsmasq.d/config/reservations
-    kill -SIGHUP $(pidof dnsmasq)
-    }
-
-    # Pergunta ao usuário se o endereço de IP deve ser reservado
-    read -p "WANT TO RESERVE THE NEXT AVAILABLE IP [y/n]? " x
-    case "$x" in
-        y)
-            reserve  # Chama a função para coletar o próximo endereço de IP válido e fixa-o
-            ;;
-        n)
-            printf "\033[33m*\033[0m ATTENTION: A DYNAMIC IP ADDRESS WILL BE ASSIGNED TO THE CONTAINER\n"
-            ;;
-        *)
-            printf "\033[31m*\033[0m ERROR: INVALID CHOICE, TYPE \033[32m'y'\033[0m IF YOU WANT TO FIX AN IP ADDRESS IN THE CONTAINER AND \033[32m'n'\033[0m IF YOU PREFER TO LEAVE IT DYNAMIC\n"
-            ;;
-        esac
-
     # Inicia o novo container
     printf "\033[32m*\033[0m STARTING...\n"
     cp later.sh /var/lib/lxc/"${NEW_CT}"/rootfs/root/

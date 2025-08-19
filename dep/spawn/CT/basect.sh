@@ -6,11 +6,11 @@ unset HISTFILE
 
 global() {
 # Definição de variáveis de rede
-SUBNET=10.0.10          # Sub-rede
-MASK=24                 # Máscara de rede
-GW=${SUBNET}.254        # Endereço do gateway
-INTERFACE=eth0          # Interface de rede utilizada
-LDNSS=${GW}             # Servidor DNS local
+SUBNET=10.0.4          # Sub-rede
+MASK=28                # Máscara de rede
+GW=${SUBNET}.14        # Endereço do gateway
+INTERFACE=eth0         # Interface de rede utilizada
+LDNSS=${GW}            # Servidor DNS local
 }
 
 connectiontest() {
