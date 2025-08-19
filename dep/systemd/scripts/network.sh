@@ -85,7 +85,15 @@ subsidiary_gw() {
     vlan718() {
         ip link add link "$LAN0" name vlan718 type vlan id 718
         ip link set dev vlan718 up
-        ip addr add 172.16.18.254/24 dev vlan718
+            br_vlan718() {
+                brctl addbr br_vlan718
+                brctl stp br_vlan718 on
+                brctl addif br_vlan718 vlan718
+                ip link set dev br_vlan718 up
+                ip addr add 172.16.18.254/24 dev br_vlan718
+            }
+        # Call
+        br_vlan718
     }
 
     #Workstation
