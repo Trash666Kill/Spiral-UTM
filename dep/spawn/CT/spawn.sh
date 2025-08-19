@@ -12,6 +12,7 @@ BASE_CT_FILES="basect.sh"
 ARCH=amd64
 NEW_CT="CT$(shuf -i 100000-999999 -n 1)"
 NEW_CT_FILES="later.sh"
+RELEASE=bookworm
 
 basect() {
 # Verifica se os arquivos necessários para criar o container base existem
@@ -27,7 +28,7 @@ if ! lxc-ls --filter "^${BASE}$" | grep -q "${BASE}"; then
     printf "\e[33m*\e[0m ATTENTION: THE BASE CONTAINER \033[32m%s\033[0m DOES NOT EXIST, WAIT...\n" "$BASE"
 
     # Cria o container base se não existir
-    lxc-create --name "${BASE}" --template download -- --dist debian --release bookworm --arch "${ARCH}" > /dev/null
+    lxc-create --name "${BASE}" --template download -- --dist debian --release "${RELEASE}" --arch "${ARCH}" > /dev/null
 
     # Copia o script de configuração para o diretório do container
     cp basect.sh /var/lib/lxc/"${BASE}"/rootfs/root/
