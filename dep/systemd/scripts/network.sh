@@ -120,6 +120,7 @@ virtual() {
         brctl stp gw099324 on
         brctl addif gw099324 tap14
         ip link set dev gw099324 up
+        ip addr add 10.0.4.14/28 dev gw099324
     }
 
     # Call
