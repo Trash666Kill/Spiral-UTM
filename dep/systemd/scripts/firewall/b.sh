@@ -5,6 +5,18 @@
 # Close on any error
 set -e
 
+# Configure NAT and forwarding for Gateway (GW375993)
+gateway() {
+    # Masquerade Rules
+    nft add rule inet firelux postrouting ip saddr 10.0.6.0/26 oifname "gw854807" masquerade
+
+    # Forward Rules
+    nft add rule inet firelux forward iifname "gw375993" oifname "gw854807" ip protocol icmp accept
+    nft add rule inet firelux forward iifname "gw375993" oifname "gw854807" ip protocol udp udp dport 53 accept
+    nft add rule inet firelux forward iifname "gw375993" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "gw375993" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
+}
+
 # Configure NAT and forwarding for DMZ (VLAN966)
 dmz() {
     # Masquerade Rules
