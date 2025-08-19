@@ -111,11 +111,25 @@ subsidiary_gw() {
     vlan966
 }
 
+# Virtual interfaces
+virtual() {
+    br_vlan714() {
+        brctl addbr br_vlan714
+        brctl stp br_vlan714 on
+        brctl addif br_vlan714 vlan714
+        ip link set dev br_vlan714 up
+    }
+
+    # Call
+    br_vlan714
+}
+
 # Main function to orchestrate the setup
 main() {
     interfaces
     main_gw
     subsidiary_gw
+    virtual
 }
 
 # Execute main function
