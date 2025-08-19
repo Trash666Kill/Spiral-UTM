@@ -113,15 +113,17 @@ subsidiary_gw() {
 
 # Virtual interfaces
 virtual() {
-    br_vlan714() {
-        brctl addbr br_vlan714
-        brctl stp br_vlan714 on
-        brctl addif br_vlan714 vlan714
-        ip link set dev br_vlan714 up
+    br_tap714() {
+        ip tuntap add tap714 mode tap
+        ip link set dev tap714 up
+        brctl addbr br_tap714
+        brctl stp br_tap714 on
+        brctl addif br_tap714 tap714
+        ip link set dev br_tap714 up
     }
 
     # Call
-    br_vlan714
+    br_tap714
 }
 
 # Main function to orchestrate the setup
