@@ -23,3 +23,40 @@ chains() {
 }
 
 nft add rule inet firelux forward iifname { "vlan966", "br_vlan966" } oifname "gw854807" accept
+
+
+      {
+        // Configurações da sub-rede 192.168.66.0/24
+        "id": 5,
+        "subnet": "192.168.66.0/24",
+        "interface": "br_vlan966",
+        "valid-lifetime": 43200,
+        "pools": [
+          {
+            // Faixa de endereços IP para alocação dinâmica
+            "pool": "192.168.66.4 - 192.168.66.20"
+          }
+        ],
+        "option-data": [
+          {
+            // Configuração do gateway padrão
+            "name": "routers",
+            "data": "192.168.66.254"
+          },
+          {
+            // Configuração dos servidores DNS
+            "name": "domain-name-servers",
+            "data": "10.0.6.1"
+          },
+          {
+            // Configuração do domínio padrão
+            "name": "domain-name",
+            "data": "pine.local.br"
+          },
+          {
+            // Configuração dos servidores NTP
+            "name": "ntp-servers",
+            "data": "10.0.6.1"
+          }
+        ]
+      }
