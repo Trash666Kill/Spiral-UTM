@@ -21,3 +21,5 @@ chains() {
     nft add chain inet firelux prerouting { type nat hook prerouting priority 0 \; policy accept \; }
     nft add chain inet firelux postrouting { type nat hook postrouting priority srcnat \; policy accept \; }
 }
+
+nft add rule inet firelux forward iifname { "vlan966", "br_vlan966" } oifname "gw854807" accept
