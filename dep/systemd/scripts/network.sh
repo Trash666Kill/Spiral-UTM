@@ -90,7 +90,16 @@ subsidiary_gw() {
     vlan714() {
         ip link add link "$LAN0" name vlan714 type vlan id 714
         ip link set dev vlan714 up
-        ip addr add 172.16.14.254/24 dev vlan714
+            br_vlan714() {
+                brctl addbr br_vlan714
+                brctl stp br_vlan714 on
+                brctl addif br_vlan714 vlan714
+                ip link set dev br_vlan714 up
+                ip addr add 172.16.14.254/24 dev br_vlan714
+            }
+
+        # Call
+        br_vlan714
     }
 
     #Container
@@ -104,6 +113,7 @@ subsidiary_gw() {
                 ip link set dev br_vlan718 up
                 ip addr add 172.16.18.254/24 dev br_vlan718
             }
+
         # Call
         br_vlan718
     }
@@ -112,7 +122,16 @@ subsidiary_gw() {
     vlan910() {
         ip link add link "$LAN0" name vlan910 type vlan id 910
         ip link set dev vlan910 up
-        ip addr add 192.168.10.254/24 dev vlan910
+            br_vlan910() {
+                brctl addbr br_vlan910
+                brctl stp br_vlan910 on
+                brctl addif br_vlan910 vlan910
+                ip link set dev br_vlan910 up
+                ip addr add 192.168.10.254/24 dev br_vlan910
+            }
+
+        # Call
+        br_vlan910
     }
 
     #DMZ
