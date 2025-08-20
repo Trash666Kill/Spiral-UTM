@@ -76,14 +76,32 @@ subsidiary_gw() {
     vlan76() {
         ip link add link "$LAN0" name vlan76 type vlan id 76
         ip link set dev vlan76 up
-        ip addr add 172.16.6.254/24 dev vlan76
+            br_vlan76() {
+                brctl addbr br_vlan76
+                brctl stp br_vlan76 on
+                brctl addif br_vlan76 vlan76
+                ip link set dev br_vlan76 up
+                ip addr add 172.16.6.254/24 dev br_vlan76
+            }
+
+        # Call
+        br_vlan76
     }
 
     #Server
     vlan710() {
         ip link add link "$LAN0" name vlan710 type vlan id 710
         ip link set dev vlan710 up
-        ip addr add 172.16.10.254/24 dev vlan710
+            br_vlan710() {
+                brctl addbr br_vlan710
+                brctl stp br_vlan710 on
+                brctl addif br_vlan710 vlan710
+                ip link set dev br_vlan710 up
+                ip addr add 172.16.10.254/24 dev br_vlan710
+            }
+
+        # Call
+        br_vlan710
     }
 
     #Virtual Machine
