@@ -232,7 +232,7 @@ install_packages() {
         ["Compression"]="unzip xz-utils bzip2 pigz"
         ["Scripting"]="sshpass python3-apt"
         ["Monitoring"]="screen htop sysstat stress lm-sensors nload smartmontools"
-        ["Disk Utilities"]="hdparm dosfstools cryptsetup uuid rsync"
+        ["Disk Utilities"]="hdparm dosfstools cryptsetup uuid uuid-runtime rsync"
         ["Connectivity"]="net-tools"
         ["Power Management"]="pm-utils acpi acpid fwupd"
         ["Resource Control"]="cpulimit"
