@@ -54,11 +54,11 @@ main_gw() {
 
     # Containers and Virtual Machines Spawn
     gw099324() {
-        ip tuntap add tap14 mode tap
-        ip link set dev tap14 up
+        ip link add link "$LAN0" name vlan14 type vlan id 14
+        ip link set dev vlan14 up
         brctl addbr gw099324
         brctl stp gw099324 on
-        brctl addif gw099324 tap14
+        brctl addif gw099324 vlan14
         ip link set dev gw099324 up
         ip addr add 10.0.4.14/28 dev gw099324
     }
