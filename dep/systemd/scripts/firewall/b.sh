@@ -24,6 +24,7 @@ dmz() {
 
     # Forward Rules
     nft add rule inet firelux forward iifname "vlan966" oifname "gw854807" accept
+    nft add rule inet firelux forward iifname "br_vlan966" oifname "gw854807" accept
 }
 
 # Configure NAT and forwarding for Switch (VLAN76)
