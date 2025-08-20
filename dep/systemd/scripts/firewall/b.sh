@@ -23,8 +23,7 @@ dmz() {
     nft add rule inet firelux postrouting ip saddr 192.168.66.0/26 oifname "gw854807" masquerade
 
     # Forward Rules
-    nft add rule inet firelux forward iifname "vlan966" oifname "gw854807" accept
-    nft add rule inet firelux forward iifname "br_vlan966" oifname "gw854807" accept
+    nft add rule inet firelux forward iifname { "vlan966", "br_vlan966" } oifname "gw854807" accept
 }
 
 # Configure NAT and forwarding for Switch (VLAN76)
