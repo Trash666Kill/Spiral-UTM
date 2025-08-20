@@ -156,7 +156,16 @@ subsidiary_gw() {
     vlan966() {
         ip link add link "$LAN0" name vlan966 type vlan id 966
         ip link set dev vlan966 up
-        ip addr add 192.168.66.62/26 dev vlan966
+            br_vlan966() {
+                brctl addbr br_vlan966
+                brctl stp br_vlan966 on
+                brctl addif br_vlan966 vlan966
+                ip link set dev br_vlan966 up
+                ip addr add 192.168.66.254/24 dev br_vlan966
+            }
+
+        # Call
+        br_vlan966
     }
 
     # Call
