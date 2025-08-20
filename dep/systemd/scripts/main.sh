@@ -14,6 +14,23 @@ FIREWALL_FOLDER="/root/.services/firewall"
 VIRTUAL_MACHINE_SCRIPT="/root/.services/virtual-machine.sh"
 CONTAINER_SCRIPT="/root/.services/container.sh"
 
+set_printk() {
+    local PARAM="kernel.printk"
+    local VALUE="4 4 1 7"
+
+    # Attempt to set the kernel parameter value
+    sysctl -w "$PARAM"="$VALUE"
+
+    # Check the exit code of the last command
+    if [[ $? -ne 0 ]]; then
+        printf "\e[31m*\e[0m Error: Failed to set parameter %s.\n" "$PARAM"
+        printf "  Check if you are running the command with root privileges (sudo).\n"
+        return 1 # Returns an error, but does not close the terminal
+    fi
+
+    printf "\e[32m✔\e[0m Parameter '%s' successfully set to '%s'.\n" "$PARAM" "$VALUE"
+}
+
 network() {
     if [[ -f "$NETWORK_SCRIPT" ]]; then
         if [[ -x "$NETWORK_SCRIPT" ]]; then
@@ -134,6 +151,7 @@ others() {
 # Main function to orchestrate the setup
 main() {
     SERVICES="
+    set_printk
     network
     ssh
     ntp
