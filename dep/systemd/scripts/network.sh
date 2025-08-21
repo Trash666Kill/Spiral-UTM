@@ -152,6 +152,22 @@ subsidiary_gw() {
         br_vlan910
     }
 
+    #Wi-Fi (Controller)
+    vlan922() {
+        ip link add link "$LAN0" name vlan922 type vlan id 922
+        ip link set dev vlan922 up
+            br_vlan922() {
+                brctl addbr br_vlan922
+                brctl stp br_vlan922 on
+                brctl addif br_vlan922 vlan922
+                ip link set dev br_vlan922 up
+                ip addr add 192.168.22.254/24 dev br_vlan922
+            }
+
+        # Call
+        br_vlan922
+    }
+
     #DMZ
     vlan966() {
         ip link add link "$LAN0" name vlan966 type vlan id 966
@@ -174,6 +190,7 @@ subsidiary_gw() {
     vlan714
     vlan718
     vlan910
+    vlan922
     vlan966
 }
 
