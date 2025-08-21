@@ -52,22 +52,10 @@ main_gw() {
         ip addr add 169.254.0.1/30 dev gw471042
     }
 
-    # Containers and Virtual Machines Spawn
-    gw099324() {
-        ip link add link "$LAN0" name vlan14 type vlan id 14
-        ip link set dev vlan14 up
-        brctl addbr gw099324
-        brctl stp gw099324 on
-        brctl addif gw099324 vlan14
-        ip link set dev gw099324 up
-        ip addr add 10.0.4.14/28 dev gw099324
-    }
-
     # Call
     gw854807
     tap16
     gw471042
-    gw099324
 }
 
 # Subsidiary gateways according to the needs of the environment
@@ -76,112 +64,49 @@ subsidiary_gw() {
     vlan76() {
         ip link add link "$LAN0" name vlan76 type vlan id 76
         ip link set dev vlan76 up
-            br_vlan76() {
-                brctl addbr br_vlan76
-                brctl stp br_vlan76 on
-                brctl addif br_vlan76 vlan76
-                ip link set dev br_vlan76 up
-                ip addr add 172.16.6.254/24 dev br_vlan76
-            }
-
-        # Call
-        br_vlan76
+        ip addr add 172.16.6.254/24 dev vlan76
     }
 
     #Server
     vlan710() {
         ip link add link "$LAN0" name vlan710 type vlan id 710
         ip link set dev vlan710 up
-            br_vlan710() {
-                brctl addbr br_vlan710
-                brctl stp br_vlan710 on
-                brctl addif br_vlan710 vlan710
-                ip link set dev br_vlan710 up
-                ip addr add 172.16.10.254/24 dev br_vlan710
-            }
-
-        # Call
-        br_vlan710
+        ip addr add 172.16.10.254/24 dev vlan710
     }
 
     #Virtual Machine
     vlan714() {
         ip link add link "$LAN0" name vlan714 type vlan id 714
         ip link set dev vlan714 up
-            br_vlan714() {
-                brctl addbr br_vlan714
-                brctl stp br_vlan714 on
-                brctl addif br_vlan714 vlan714
-                ip link set dev br_vlan714 up
-                ip addr add 172.16.14.254/24 dev br_vlan714
-            }
-
-        # Call
-        br_vlan714
+        ip addr add 172.16.14.254/24 dev vlan714
     }
 
     #Container
     vlan718() {
         ip link add link "$LAN0" name vlan718 type vlan id 718
         ip link set dev vlan718 up
-            br_vlan718() {
-                brctl addbr br_vlan718
-                brctl stp br_vlan718 on
-                brctl addif br_vlan718 vlan718
-                ip link set dev br_vlan718 up
-                ip addr add 172.16.18.254/24 dev br_vlan718
-            }
-
-        # Call
-        br_vlan718
+        ip addr add 172.16.18.254/24 dev vlan718
     }
 
     #Workstation
     vlan910() {
         ip link add link "$LAN0" name vlan910 type vlan id 910
         ip link set dev vlan910 up
-            br_vlan910() {
-                brctl addbr br_vlan910
-                brctl stp br_vlan910 on
-                brctl addif br_vlan910 vlan910
-                ip link set dev br_vlan910 up
-                ip addr add 192.168.10.254/24 dev br_vlan910
-            }
-
-        # Call
-        br_vlan910
+        ip addr add 192.168.10.254/24 dev vlan910
     }
 
     #Wi-Fi (Controller)
     vlan922() {
         ip link add link "$LAN0" name vlan922 type vlan id 922
         ip link set dev vlan922 up
-            br_vlan922() {
-                brctl addbr br_vlan922
-                brctl stp br_vlan922 on
-                brctl addif br_vlan922 vlan922
-                ip link set dev br_vlan922 up
-                ip addr add 192.168.22.254/24 dev br_vlan922
-            }
-
-        # Call
-        br_vlan922
+        ip addr add 192.168.22.254/24 dev vlan922
     }
 
     #DMZ
     vlan966() {
         ip link add link "$LAN0" name vlan966 type vlan id 966
         ip link set dev vlan966 up
-            br_vlan966() {
-                brctl addbr br_vlan966
-                brctl stp br_vlan966 on
-                brctl addif br_vlan966 vlan966
-                ip link set dev br_vlan966 up
-                ip addr add 192.168.66.254/24 dev br_vlan966
-            }
-
-        # Call
-        br_vlan966
+        ip addr add 192.168.66.254/24 dev vlan966
     }
 
     # Call
