@@ -105,6 +105,16 @@ workstation() {
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport 993 accept
 }
 
+wifi_controller() {
+    # Masquerade Rules
+    nft add rule inet firelux postrouting ip saddr 172.16.22.0/24 oifname "gw854807" masquerade
+
+    # Forward Rules
+    nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol icmp accept
+    nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol udp udp dport 53 accept
+    nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+}
+
 # Main function to orchestrate the setup
 main() {
     SERVICES="
@@ -115,6 +125,7 @@ main() {
     virtual_machine
     container
     workstation
+    wifi_controller
     "
 
     for SERVICE in $SERVICES
