@@ -52,22 +52,10 @@ main_gw() {
         ip addr add 169.254.0.1/30 dev gw471042
     }
 
-    # Containers and Virtual Machines Spawn
-    gw099324() {
-        ip link add link "$LAN0" name vlan14 type vlan id 14
-        ip link set dev vlan14 up
-        brctl addbr gw099324
-        brctl stp gw099324 on
-        brctl addif gw099324 vlan14
-        ip link set dev gw099324 up
-        ip addr add 10.0.4.14/28 dev gw099324
-    }
-
     # Call
     gw854807
     tap16
     gw471042
-    gw099324
 }
 
 # Subsidiary gateways according to the needs of the environment
