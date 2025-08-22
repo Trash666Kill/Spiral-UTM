@@ -60,6 +60,12 @@ main_gw() {
 
 # Subsidiary gateways according to the needs of the environment
 subsidiary_gw() {
+    #Default
+    vlan1() {
+        ip link add link "$LAN0" name vlan1 type vlan id 1
+        ip link set dev vlan1 up
+    }
+
     #Switch
     vlan76() {
         ip link add link "$LAN0" name vlan76 type vlan id 76
@@ -110,6 +116,7 @@ subsidiary_gw() {
     }
 
     # Call
+    vlan1
     vlan76
     vlan710
     vlan714
