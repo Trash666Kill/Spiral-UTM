@@ -591,7 +591,7 @@ main() {
     setup_network_services
     configure_network_script
     setup_firewall
-    setup_hypervisor
+    #setup_hypervisor
     setup_trigger_service
     setup_grub
     schedule_post_reboot_cleanup
