@@ -459,6 +459,7 @@ setup_firewall() {
     systemctl disable --now nftables --quiet
     cp -r systemd/scripts/firewall /root/.services/
     chmod 700 /root/.services/firewall/*
+    chattr +i /root/.services/firewall/a.sh
     log_success "Firewall Setup Complete"
 }
 
