@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# - ?
+# ...
 
 # Close on any error
 set -e
@@ -18,18 +18,6 @@ host() {
 
     # Call
     ssh
-}
-
-# Configure NAT and forwarding for Gateway (GW099324)
-gw099324() {
-    # Masquerade Rules
-    nft add rule inet firelux postrouting ip saddr 10.0.4.0/28 oifname "gw854807" masquerade
-
-    # Forward Rules
-    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol icmp accept
-    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol tcp tcp dport 53 accept
-    nft add rule inet firelux forward iifname "gw099324" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
 # Configure NAT and forwarding for DMZ (VLAN966)
@@ -135,7 +123,6 @@ wifi_controller() {
 main() {
     SERVICES="
     host
-    gw099324
     dmz
     switch
     server
