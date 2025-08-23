@@ -6,3 +6,23 @@
 
 # Close on any error (Optional)
 #set -e
+
+wireguard() {
+    
+}
+
+# Main function to orchestrate the setup
+main() {
+    SERVICES="
+    wireguard
+    "
+
+    for SERVICE in $SERVICES
+    do
+        $SERVICE
+        sleep 4
+    done
+}
+
+# Execute main function
+#main
