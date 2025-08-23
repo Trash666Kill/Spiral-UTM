@@ -1,4 +1,4 @@
-chains() {
+info() {
     nft add rule inet firelux input log prefix \"INPUT_DROP: \" level info drop
     nft add rule inet firelux output log prefix \"OUTPUT_DROP: \" level info drop
     nft add rule inet firelux forward log prefix \"FORWARD_DROP: \" level info drop
