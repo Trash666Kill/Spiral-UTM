@@ -463,52 +463,6 @@ setup_firewall() {
     log_success "Firewall Setup Complete"
 }
 
-# --- Hypervisor Functions ---
-setup_kvm() {
-    log_step "Configuring KVM Hypervisor"
-    run_apt install qemu-kvm libvirt0 libvirt-daemon-system
-    systemctl disable --now libvirtd --quiet
-    usermod -aG libvirt "$TARGET_USER"
-    local cpu_vendor
-    cpu_vendor=$(lscpu | grep 'Vendor ID' | awk '{print $3}')
-    case "$cpu_vendor" in
-        GenuineIntel)
-            echo 'options kvm_intel nested=1' > /etc/modprobe.d/kvm.conf
-            modprobe -r kvm_intel && modprobe kvm_intel
-            ;;
-        AuthenticAMD)
-            echo 'options kvm_amd nested=1' > /etc/modprobe.d/kvm.conf
-            modprobe -r kvm_amd && modprobe kvm_amd
-            ;;
-    esac
-    mkdir -p /var/log/virsh && chown "$TARGET_USER":"$TARGET_USER" -R /var/log/virsh
-    cp systemd/scripts/virtual-machine.sh /root/.services/ && chmod 700 /root/.services/virtual-machine.sh
-}
-
-setup_lxc() {
-    log_step "Configuring LXC Containers"
-    run_apt install lxc
-    sed -i '/^\s*}$/i \ \ /mnt\/Local\/Container\/A\/lxc\/** rw,\n\ \ mount options=(rw, move) -> /mnt\/Local\/Container\/A\/lxc\/**,' /etc/apparmor.d/usr.bin.lxc-copy && apparmor_parser -r /etc/apparmor.d/usr.bin.lxc-copy >/dev/null
-    systemctl disable --now lxc lxc-net --quiet && systemctl mask lxc-net --quiet
-    rm -f /etc/default/lxc-net
-    cat > /etc/lxc/default.conf <<-EOF
-	lxc.net.0.type = veth
-	lxc.net.0.link = gw099324
-	lxc.net.0.flags = up
-	lxc.apparmor.profile = generated
-	lxc.apparmor.allow_nesting = 1
-	EOF
-    mkdir -p /var/log/lxc && chown "$TARGET_USER":"$TARGET_USER" -R /var/log/lxc
-    cp systemd/scripts/container.sh /root/.services/ && chmod 700 /root/.services/container.sh
-}
-
-setup_hypervisor() {
-    log_info "Starting Hypervisor Setup"
-    setup_kvm
-    setup_lxc
-    log_success "Hypervisor Setup Complete"
-}
-
 setup_trigger_service() {
     log_info "Starting Systemd Trigger Service Setup"
     cp systemd/trigger.service /etc/systemd/system/
@@ -591,7 +545,6 @@ main() {
     setup_network_services
     configure_network_script
     setup_firewall
-    #setup_hypervisor
     setup_trigger_service
     setup_grub
     schedule_post_reboot_cleanup
