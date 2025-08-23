@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# - The second stage of firewall rules, its criticality level is yellow. It is intended for default configuration of UTM and VLAN interfaces.
+# - The second stage of firewall rules, its criticality level is yellow.
+# It is intended for default configuration of UTM and VLAN interfaces.
 
 # Close on any error
 set -e
