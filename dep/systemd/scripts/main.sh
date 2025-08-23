@@ -11,8 +11,6 @@ set -e
 # Paths to the scripts
 NETWORK_SCRIPT="/root/.services/network.sh"
 FIREWALL_FOLDER="/root/.services/firewall"
-VIRTUAL_MACHINE_SCRIPT="/root/.services/virtual-machine.sh"
-CONTAINER_SCRIPT="/root/.services/container.sh"
 
 set_printk() {
     local PARAM="kernel.printk"
@@ -101,44 +99,6 @@ ntp() {
     fi
 }
 
-virtual_machine() {
-    if [[ -f "$VIRTUAL_MACHINE_SCRIPT" ]]; then
-        if [[ -x "$VIRTUAL_MACHINE_SCRIPT" ]]; then
-            printf "\e[33m*\e[0m Running $VIRTUAL_MACHINE_SCRIPT...\n"
-            bash "$VIRTUAL_MACHINE_SCRIPT"
-            if [[ $? -ne 0 ]]; then
-                printf "\e[31m*\e[0m Error: $VIRTUAL_MACHINE_SCRIPT failed to execute successfully.\n"
-                exit 1
-            fi
-        else
-            printf "\e[31m*\e[0m Error: $VIRTUAL_MACHINE_SCRIPT does not have execute permission.\n"
-            exit 1
-        fi
-    else
-        printf "\e[31m*\e[0m Error: $VIRTUAL_MACHINE_SCRIPT not found.\n"
-        exit 1
-    fi
-}
-
-container() {
-    if [[ -f "$CONTAINER_SCRIPT" ]]; then
-        if [[ -x "$CONTAINER_SCRIPT" ]]; then
-            printf "\e[33m*\e[0m Running $CONTAINER_SCRIPT...\n"
-            bash "$CONTAINER_SCRIPT"
-            if [[ $? -ne 0 ]]; then
-                printf "\e[31m*\e[0m Error: $CONTAINER_SCRIPT failed to execute successfully.\n"
-                exit 1
-            fi
-        else
-            printf "\e[31m*\e[0m Error: $CONTAINER_SCRIPT does not have execute permission.\n"
-            exit 1
-        fi
-    else
-        printf "\e[31m*\e[0m Error: $CONTAINER_SCRIPT not found.\n"
-        exit 1
-    fi
-}
-
 others() {
     local SERVICE=
     systemctl restart "$SERVICE"
@@ -158,8 +118,6 @@ main() {
     firewall
     dhcp
     dns
-    virtual_machine
-    container
     "
 
     for SERVICE in $SERVICES
