@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # - Description: Configure firewall rules for network traffic management,
+# - The first stage of firewall rules, its criticality level is red.
+# It is intended for the default configuration of primary interfaces and crucial UTM security rules.
+# Modifying it is not recommended.
 # - and ensure that the IDS (Intrusion Detection System) is active to monitor network traffic.
 # - Firewall Setup Script Manual:
 # - Masquerade: Hides the source IP address of packets by replacing it with the router's IP (used for NAT to external networks).
