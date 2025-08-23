@@ -122,7 +122,7 @@ wifi_controller() {
 
 # Main function to orchestrate the setup
 main() {
-    SERVICES="
+    RULES="
     host
     dmz
     switch
@@ -133,9 +133,9 @@ main() {
     wifi_controller
     "
 
-    for SERVICE in $SERVICES
+    for RULE in $RULES
     do
-        $SERVICE
+        $RULE
         sleep 2
     done
 }

@@ -8,18 +8,18 @@
 #set -e
 
 wireguard() {
-    
+
 }
 
 # Main function to orchestrate the setup
 main() {
-    SERVICES="
+    RULES="
     wireguard
     "
 
-    for SERVICE in $SERVICES
+    for RULE in $RULES
     do
-        $SERVICE
+        $RULE
         sleep 4
     done
 }

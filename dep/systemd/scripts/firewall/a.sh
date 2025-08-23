@@ -131,7 +131,7 @@ host() {
 
 # Main function to orchestrate the setup
 main() {
-    SERVICES="
+    RULES="
     ip_forwarding
     restart_nftables
     flush_nftables
@@ -142,9 +142,9 @@ main() {
     setup_logging
     "
 
-    for SERVICE in $SERVICES
+    for RULE in $RULES
     do
-        $SERVICE
+        $RULE
         sleep 1
     done
 }
