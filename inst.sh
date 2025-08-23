@@ -298,17 +298,6 @@ setup_ssh() {
     log_success "SSH Configuration Complete"
 }
 
-setup_spawn_service() {
-    log_info "Starting Spawn Service Configuration"
-    cp -r spawn /etc/ && chmod 700 /etc/spawn/CT/*.sh
-    local user_home
-    user_home=$(getent passwd "$TARGET_USER" | cut -d: -f6)
-    ln -sf /etc/spawn/CT/spawn.sh "$user_home"/.spawn
-    chown -h "$TARGET_USER":"$TARGET_USER" "$user_home"/.spawn
-    ln -sf /etc/spawn/CT/spawn.sh /root/.spawn
-    log_success "Spawn Service Configuration Complete"
-}
-
 configure_network_script() {
     log_info "Setting up and Configuring the Dynamic Network Script"
     
@@ -572,7 +561,6 @@ main() {
     install_packages
     create_directories
     setup_ssh
-    setup_spawn_service
     setup_network_services
     configure_network_script
     setup_firewall
