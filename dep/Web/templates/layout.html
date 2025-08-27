@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Firewall Dashboard{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="grid-container">
+        <header class="header">
+            <div class="header-left">
+                <h3>Firewall Log Viewer</h3>
+            </div>
+            <div class="header-right">
+                <span>Bem-vindo, {{ current_user.name }}</span>
+                <a href="{{ url_for('logout') }}" class="logout-button">Sair</a>
+            </div>
+        </header>
+
+        <aside class="sidebar">
+            <div class="sidebar-title">Navegação</div>
+            <ul class="sidebar-list">
+                <li class="sidebar-list-item">
+                    <a href="{{ url_for('dashboard') }}">Dashboard</a>
+                </li>
+                <li class="sidebar-list-item">
+                    <a href="#">Status</a>
+                </li>
+                <li class="sidebar-list-item">
+                    <a href="#">Regras</a>
+                </li>
+                <li class="sidebar-list-item">
+                    <a href="#">Relatórios</a>
+                </li>
+            </ul>
+        </aside>
+
+        <main class="main-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <script>
+        (function() {
+            let inactivityTimer;
+            const logoutTime = 60 * 1000; // 1 minuto
+
+            function resetInactivityTimer() {
+                clearTimeout(inactivityTimer);
+                inactivityTimer = setTimeout(() => {
+                    alert("Você foi desconectado por inatividade.");
+                    window.location.href = "{{ url_for('logout') }}";
+                }, logoutTime);
+            }
+
+            const activityEvents = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart'];
+            activityEvents.forEach(eventName => {
+                document.addEventListener(eventName, resetInactivityTimer, true);
+            });
+
+            resetInactivityTimer();
+        })();
+    </script>
+
+</body>
+</html>

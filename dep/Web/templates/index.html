@@ -1,125 +1,158 @@
-<!DOCTYPE html>
-<html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Visualizador de Logs</title>
-    <style>
-        body { font-family: monospace; background-color: #1e1e1e; color: #d4d4d4; margin: 0; }
-        h1 { background-color: #333; color: #fff; padding: 1rem; margin: 0; }
-        #log-container {
-            padding: 1rem;
-            white-space: pre; /* Usar 'pre' para manter espaços e evitar quebra de linha automática */
-            word-wrap: normal; /* Desabilitar quebra de linha por palavra */
-            overflow-x: auto; /* Adicionar rolagem horizontal se a linha for muito longa */
-            height: 80vh;
-            overflow-y: scroll;
-            background-color: #000;
-            border: 1px solid #444;
-            margin: 1rem;
-            border-radius: 5px;
-        }
-        #footer { padding: 0 1rem; font-size: 0.9em; color: #888; }
+{% extends "layout.html" %}
 
-        /* --- Nossas novas cores para os destaques --- */
-        .highlight-drop    { color: #F44336; font-weight: bold; } /* Vermelho para DROP/REJECT */
-        .highlight-accept  { color: #4CAF50; font-weight: bold; } /* Verde para ACCEPT/ALLOW */
-        .highlight-src     { color: #2196F3; } /* Azul para IP de Origem */
-        .highlight-dst     { color: #FF9800; } /* Laranja para IP de Destino */
-        .highlight-proto   { color: #9C27B0; } /* Roxo para Protocolo */
-        .highlight-key     { color: #00BCD4; } /* Ciano para chaves como 'SPT=' */
+{% block title %}Dashboard - Logs em Tempo Real{% endblock %}
 
-    </style>
-</head>
-<body>
-
-    <h1>Visualizador de Log: <span id="log-title">nftables.log</span></h1>
-    
-    <pre id="log-container">Carregando logs...</pre>
-    
-    <div id="footer">
-        Atualizando a cada 5 segundos. Status: <span id="status">OK</span>
+{% block content %}
+<div class="main-header">
+    <h2>Logs em Tempo Real: <span id="log-title">nftables</span>.log</h2>
+    <div class="controls">
+        <label for="log-selector">Selecionar Log:</label>
+        <select id="log-selector">
+            {% for log in allowed_logs %}
+            <option value="{{ log }}" {% if log == 'nftables' %}selected{% endif %}>{{ log }}</option>
+            {% endfor %}
+        </select>
     </div>
+</div>
 
-    <script>
-        const logContainer = document.getElementById('log-container');
-        const statusElement = document.getElementById('status');
-        const logTitleElement = document.getElementById('log-title');
-        const logName = 'nftables';
+<pre id="log-container">Carregando logs...</pre>
 
-        /**
-         * Função que aplica cores a uma única linha de log.
-         * Ela usa expressões regulares para encontrar e substituir os padrões.
-         */
-        function colorizeLogLine(line) {
-            // Passo 1: Escapar caracteres HTML para segurança (evitar XSS)
-            // Isso garante que se o log contiver '<' ou '>', não será interpretado como HTML.
-            let safeLine = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+<div class="footer-status">
+    <svg id="pause-icon" class="status-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="var(--orange)">
+        <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+    </svg>
+    <span id="status-text">Iniciando...</span>
+</div>
 
-            // Passo 2: Aplicar as regras de colorização
-            const rules = [
-                // Regra para DROP, REJECT, etc.
-                { regex: /(OUTPUT_DROP|INPUT_DROP|FORWARD_DROP|REJECT)/g, class: 'highlight-drop' },
-                // Regra para ACCEPT, ALLOW, etc.
-                { regex: /(ACCEPT|ALLOW)/g, class: 'highlight-accept' },
-                // Regra para IP de Origem (SRC)
-                { regex: /(SRC=)([\d\.]+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-src">$2</span>` },
-                // Regra para IP de Destino (DST)
-                { regex: /(DST=)([\d\.]+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-dst">$2</span>` },
-                // Regra para Protocolo
-                { regex: /(PROTO=)(\w+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-proto">$2</span>` },
-                // Regra para outras chaves (SPT, DPT, LEN, etc.)
-                { regex: /(IN=|OUT=|SPT=|DPT=|LEN=|TOS=|TTL=|ID=)/g, class: 'highlight-key' }
-            ];
+<script>
+    const logContainer = document.getElementById('log-container');
+    const statusText = document.getElementById('status-text');
+    const logTitleElement = document.getElementById('log-title');
+    const logSelector = document.getElementById('log-selector');
+    const pauseIcon = document.getElementById('pause-icon');
+    
+    let currentLogName = logSelector.value;
+    let fetchIntervalId = null;
+    let inactivityTimerId = null;
+    let countdownIntervalId = null;
+    let isPausedByUser = false;
 
-            rules.forEach(rule => {
-                if (rule.replacement) {
-                    safeLine = safeLine.replace(rule.regex, rule.replacement);
-                } else {
-                    safeLine = safeLine.replace(rule.regex, `<span class="${rule.class}">$1</span>`);
-                }
-            });
-
-            return safeLine;
-        }
-
-        async function fetchLogs() {
-            try {
-                const response = await fetch(`/api/logs/${logName}`);
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.details || `Erro ${response.status}: ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                
-                // Processa cada linha para adicionar as cores
-                const coloredContent = data.content
-                    .split('\n') // Divide o texto em linhas
-                    .map(colorizeLogLine) // Aplica a função de colorir em cada linha
-                    .join('\n'); // Junta as linhas novamente
-
-                // Usamos .innerHTML porque agora estamos inserindo tags HTML (<span>)
-                logContainer.innerHTML = coloredContent;
-                
-                logTitleElement.textContent = data.log_name + '.log';
-                
-                logContainer.scrollTop = logContainer.scrollHeight;
-                
-                statusElement.textContent = `OK - Atualizado em ${new Date().toLocaleTimeString()}`;
-                statusElement.style.color = '#4CAF50';
-            } catch (error) {
-                logContainer.textContent = `Falha ao carregar logs.\n\nDetalhes: ${error.message}`;
-                statusElement.textContent = 'Erro';
-                statusElement.style.color = '#F44336';
-                console.error('Erro ao buscar logs:', error);
-            }
-        }
-
+    function startLogFetching() {
+        if (fetchIntervalId) clearInterval(fetchIntervalId);
         fetchLogs();
-        setInterval(fetchLogs, 5000);
-    </script>
+        fetchIntervalId = setInterval(() => {
+            if (!isPausedByUser) fetchLogs();
+        }, 5000);
+    }
 
-</body>
-</html>
+    function pauseAutoScroll() {
+        if (!isPausedByUser) {
+            isPausedByUser = true;
+            updateStatus('paused');
+        }
+        clearTimeout(inactivityTimerId);
+        inactivityTimerId = setTimeout(resumeAutoScroll, 15000);
+    }
+
+    function resumeAutoScroll() {
+        clearTimeout(inactivityTimerId);
+        clearInterval(countdownIntervalId);
+        if (isPausedByUser) {
+            isPausedByUser = false;
+            updateStatus('resumed');
+            fetchLogs();
+        }
+    }
+
+    async function fetchLogs() {
+        const shouldScrollToBottom = logContainer.scrollTop + logContainer.clientHeight >= logContainer.scrollHeight - 20;
+        try {
+            const response = await fetch(`/api/logs/${currentLogName}`);
+            if (!response.ok) {
+                if (response.status === 401) window.location.reload();
+                const errorData = await response.json();
+                throw new Error(errorData.details || `Erro ${response.status}`);
+            }
+            const data = await response.json();
+            const coloredContent = data.content.split('\n').map(colorizeLogLine).join('\n');
+            logContainer.innerHTML = coloredContent;
+            logTitleElement.textContent = data.log_name;
+            if (shouldScrollToBottom && !isPausedByUser) {
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+            if (!isPausedByUser) updateStatus('running');
+        } catch (error) {
+            logContainer.textContent = `Falha ao carregar logs.\nDetalhes: ${error.message}`;
+            updateStatus('error');
+        }
+    }
+
+    function updateStatus(state) {
+        statusText.classList.remove('blinking');
+        pauseIcon.style.display = 'none';
+        clearInterval(countdownIntervalId);
+
+        switch (state) {
+            case 'paused':
+                let countdown = 15;
+                statusText.innerHTML = `Pausado. Retornando em <span class="countdown-timer">${countdown}s</span>...`;
+                statusText.classList.add('blinking');
+                pauseIcon.style.display = 'inline-block';
+                countdownIntervalId = setInterval(() => {
+                    countdown--;
+                    const countdownElement = statusText.querySelector('.countdown-timer');
+                    if (countdownElement) countdownElement.textContent = `${countdown}s`;
+                    if (countdown <= 0) clearInterval(countdownIntervalId);
+                }, 1000);
+                break;
+            case 'resumed':
+                statusText.textContent = `Atualização automática reativada.`;
+                break;
+            case 'running':
+                statusText.textContent = `OK - Atualizado em ${new Date().toLocaleTimeString()}`;
+                break;
+            case 'error':
+                statusText.textContent = 'Erro ao buscar logs.';
+                break;
+        }
+    }
+
+    logContainer.addEventListener('scroll', () => {
+        const atBottom = logContainer.scrollTop + logContainer.clientHeight >= logContainer.scrollHeight - 20;
+        if (atBottom) {
+            resumeAutoScroll();
+        } else {
+            pauseAutoScroll();
+        }
+    });
+
+    logSelector.addEventListener('change', (event) => {
+        currentLogName = event.target.value;
+        logContainer.textContent = `Carregando logs de ${currentLogName}...`;
+        resumeAutoScroll();
+        startLogFetching();
+    });
+
+    function colorizeLogLine(line) {
+        let safeLine = line.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const rules = [
+            { regex: /(OUTPUT_DROP|INPUT_DROP|FORWARD_DROP|REJECT)/g, class: 'highlight-drop' },
+            { regex: /(ACCEPT|ALLOW)/g, class: 'highlight-accept' },
+            { regex: /(SRC=)([\d\.]+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-src">$2</span>` },
+            { regex: /(DST=)([\d\.]+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-dst">$2</span>` },
+            { regex: /(PROTO=)(\w+)/g, replacement: `<span class="highlight-key">$1</span><span class="highlight-proto">$2</span>` },
+            { regex: /(IN=|OUT=|SPT=|DPT=|LEN=|TOS=|TTL=|ID=)/g, class: 'highlight-key' }
+        ];
+        rules.forEach(rule => {
+            if (rule.replacement) {
+                safeLine = safeLine.replace(rule.regex, rule.replacement);
+            } else {
+                safeLine = safeLine.replace(rule.regex, `<span class="${rule.class}">$1</span>`);
+            }
+        });
+        return safeLine;
+    }
+
+    startLogFetching();
+</script>
+{% endblock %}
