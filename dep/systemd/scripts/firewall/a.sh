@@ -72,6 +72,7 @@ setup_logging() {
 established_related() {
     # Filter Rules
     nft add rule inet firelux input ct state established,related accept
+    nft add rule inet firelux output ct state established,related accept
     nft add rule inet firelux forward ct state established,related accept
 }
 
