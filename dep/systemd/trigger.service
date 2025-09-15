@@ -1,13 +1,13 @@
- [Service]
- Type=oneshot
- ExecStartPre=/bin/sleep 10
- EnvironmentFile=/etc/environment
- ExecStart=/root/.services/main.sh
- RemainAfterExit=true
- Restart=on-failure
- RestartSec=5s
- StandardOutput=journal
- StandardError=journal
+[Service]
+Type=oneshot
+ExecStartPre=/bin/sleep 10
+EnvironmentFile=/etc/environment
+ExecStart=/root/.services/main.sh
+RemainAfterExit=true
+Restart=on-failure
+RestartSec=5s
+StandardOutput=journal
+StandardError=journal
 
- [Install]
- WantedBy=multi-user.target
+[Install]
+WantedBy=multi-user.target
