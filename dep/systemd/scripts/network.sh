@@ -9,6 +9,9 @@
 # Close on any error
 set -e
 
+#WAN0=""
+#LAN0=""
+
 # Physical interfaces
 interfaces() {
     wan0() {
