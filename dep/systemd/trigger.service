@@ -7,8 +7,8 @@ RemainAfterExit=true
 Restart=on-failure
 RestartSec=5s
 
-StandardOutput=append:/var/log/trigger.log
-StandardError=append:/var/log/trigger.log
+StandardOutput=truncate:/var/log/trigger.log
+StandardError=truncate:/var/log/trigger.log
 
 [Install]
 WantedBy=multi-user.target
