@@ -126,10 +126,6 @@ server() {
     srv28013
 }
 
-wireguard() {
-
-}
-
 autossh() {
     local AUTOSSH_SCRIPT="/root/.services/firewall/autossh.sh"
     # Filter Rules
