@@ -101,6 +101,7 @@ workstation() {
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol udp udp dport 53 accept
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport 53 accept
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
+    nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol udp udp dport {80, 443} accept
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport {8080, 5060} accept
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol udp udp dport {8080, 5060} accept
     nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport 4634 accept
