@@ -1,2 +1,158 @@
-Pdrão APIPA: 169.254.0.0/16
-UTM = 169.254.0.1
+#!/bin/bash
+
+# Close on any error (Optional)
+#set -e
+
+server() {
+    srv28013() {
+            # Child Functions
+            445() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 445 dnat to 172.16.10.1:445
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 445 accept
+                nft add rule inet firelux forward iif "vlan710" oif "vlan910" tcp sport 445 accept
+            }
+
+            4242() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 4242 dnat to 172.16.10.1:4242
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 4242 accept
+            }
+
+            6600() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 6600 dnat to 172.16.10.1:6600
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 6600 accept
+            }
+
+            5644() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 5644 dnat to 172.16.10.1:5644
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 5644 accept
+            }
+
+            4533() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 4533 dnat to 172.16.10.1:4533
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 4533 accept
+            }
+
+            8096() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 8096 dnat to 172.16.10.1:8096
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 8096 accept
+            }
+
+            6080() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 6080 dnat to 172.16.10.1:6080
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 6080 accept
+            }
+
+            6081() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 6081 dnat to 172.16.10.1:6081
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 6081 accept
+            }
+
+            8081() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 8081 dnat to 172.16.10.1:8081
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 8081 accept
+            }
+
+            3389() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport 3389 dnat to 172.16.10.1:3389
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 3389 accept
+            }
+
+            vnc() {
+                # DNAT Rules
+                for port in $(seq 5900 5960); do
+                    nft add rule inet firelux prerouting iif "vlan910" ip daddr 192.168.10.0/24 tcp dport $port dnat to 172.16.10.1:$port
+                done
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan910" oif "vlan710" tcp dport 5900-5960 accept
+                nft add rule inet firelux forward iif "vlan710" oif "vlan910" tcp sport 5900-5960 accept
+            }
+
+            inter_vlan_4242() {
+                # DNAT Rules
+                nft add rule inet firelux prerouting iif "vlan714" ip daddr 172.16.14.0/24 tcp dport 4242 dnat to 172.16.10.0:4242
+
+                # Forward Rules
+                nft add rule inet firelux forward iif "vlan714" oif "vlan710" tcp dport 4242 accept
+                nft add rule inet firelux forward iif "vlan710" oif "vlan714" tcp sport 4242 accept
+            }
+
+            # Call Child Functions
+            445
+            4242
+            5644
+            6600
+            4533
+            8096
+            6080
+            6081
+            8081
+            3389
+            vnc
+            inter_vlan_4242
+        }
+}
+
+wireguard() {
+
+}
+
+autossh() {
+    local AUTOSSH_SCRIPT="/root/.services/firewall/autossh.sh"
+    # Filter Rules
+    nft add rule inet firelux output tcp dport 4635 accept
+    nft add rule inet firelux output tcp dport 4533 accept
+    nft add rule inet firelux output tcp dport 8096 accept
+    nft add rule inet firelux output tcp dport 9091 accept
+    nft add rule inet firelux output tcp dport 8080 accept
+
+    # Call
+    sleep 2
+    bash "$AUTOSSH_SCRIPT"
+}
+
+# Main function to orchestrate the setup
+main() {
+    RULES="
+    server
+    "
+
+    for RULE in $RULES
+    do
+        $RULE
+        sleep 4
+    done
+}
+
+# Execute main function
+main
