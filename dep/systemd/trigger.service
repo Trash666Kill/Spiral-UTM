@@ -6,8 +6,9 @@ ExecStart=/root/.services/main.sh
 RemainAfterExit=true
 Restart=on-failure
 RestartSec=5s
-StandardOutput=journal
-StandardError=journal
+
+StandardOutput=append:/var/log/trigger.log
+StandardError=append:/var/log/trigger.log
 
 [Install]
 WantedBy=multi-user.target
