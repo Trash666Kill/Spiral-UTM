@@ -121,6 +121,9 @@ server() {
             vnc
             inter_vlan_4242
         }
+
+    # Call
+    srv28013
 }
 
 wireguard() {
