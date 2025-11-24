@@ -96,9 +96,9 @@ host() {
         nft add rule inet firelux output udp dport 53 accept
         nft add rule inet firelux input udp dport 53 accept
         nft add rule inet firelux output udp sport 53 accept
-        nft add rule inet firelux output tcp dport 53 accept
-        nft add rule inet firelux input tcp dport 53 accept
-        nft add rule inet firelux output tcp sport 53 accept
+        nft add rule inet firelux output tcp dport {53, 853} accept
+        nft add rule inet firelux input tcp dport {53, 853} accept
+        nft add rule inet firelux output tcp sport {53, 853} accept
     }
 
     dhcp() {

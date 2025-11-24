@@ -5,5 +5,4 @@ nft add rule inet firelux output tcp dport {53, 853} accept
 nft add rule inet firelux input tcp dport {53, 853} accept
 nft add rule inet firelux output tcp sport {53, 853} accept
 
-nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol udp udp dport {53, 853} accept
 nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
