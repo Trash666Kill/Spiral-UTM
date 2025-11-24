@@ -60,7 +60,7 @@ server() {
     # Forward Rules
     nft add rule inet firelux forward iifname "vlan710" oifname "gw854807" ip protocol icmp accept
     nft add rule inet firelux forward iifname "vlan710" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan710" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "vlan710" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
     nft add rule inet firelux forward iifname "vlan710" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
@@ -75,7 +75,7 @@ virtual_machine() {
     # Forward Rules
     nft add rule inet firelux forward iifname "vlan714" oifname "gw854807" ip protocol icmp accept
     nft add rule inet firelux forward iifname "vlan714" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan714" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "vlan714" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
     nft add rule inet firelux forward iifname "vlan714" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
@@ -87,7 +87,7 @@ container() {
     # Forward Rules
     nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol icmp accept
     nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
     nft add rule inet firelux forward iifname "vlan718" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
@@ -117,7 +117,7 @@ wifi_controller() {
     # Forward Rules
     nft add rule inet firelux forward iifname "vlan922" oifname "gw854807" ip protocol icmp accept
     nft add rule inet firelux forward iifname "vlan922" oifname "gw854807" ip protocol udp udp dport 53 accept
-    nft add rule inet firelux forward iifname "vlan922" oifname "gw854807" ip protocol tcp tcp dport 53 accept
+    nft add rule inet firelux forward iifname "vlan922" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
     nft add rule inet firelux forward iifname "vlan922" oifname "gw854807" ip protocol tcp tcp dport {80, 443} accept
 }
 
