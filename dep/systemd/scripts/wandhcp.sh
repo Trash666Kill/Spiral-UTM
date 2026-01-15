@@ -1,12 +1,6 @@
 
 #!/bin/bash
 
-# - Description: Configures network interfaces and gateways for a UTM environment.
-# - Sets up physical interfaces (WAN/LAN), main gateways (Trunk, DNS/NTP, SSH/SNMP),
-# - and subsidiary VLANs (Switch, Server, VM, Container, Workstation, DMZ).
-# - Exits with an error if any configuration fails.
-# - To add new gateways or VLANs, copy and edit functions like gw854807 or vlan76.
-
 # Close on any error
 set -e
 
