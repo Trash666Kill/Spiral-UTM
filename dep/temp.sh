@@ -1,169 +1,86 @@
 #!/bin/bash
 
-# Close on any error
-set -e
+# ==============================================================================
+# CONFIGURAÇÃO DE VARIÁVEIS
+# ==============================================================================
+DHCP_MAX_RETRIES=5      # Total de tentativas
+DHCP_WAIT_TIME=5        # Pausa (segundos) entre tentativas
+WAN0="eth0"             # Ajuste para a sua interface física real
+WAN1="eth1"             # Ajuste para a sua interface física real
 
-# Enable IP forwarding
-ip_forwarding() {
-    sysctl -w net.ipv4.ip_forward=1
-    if [[ $? -ne 0 ]]; then
-        printf "\e[31m*\e[0m Error: Failed to enable IP forwarding.\n"
-        exit 1
-    fi
+# ==============================================================================
+# FUNÇÕES AUXILIARES (LAYER 2)
+# ==============================================================================
+setup_gw854807_l2() {
+    # WAN0 - PRIMARY
+    brctl addbr gw854807
+    brctl stp gw854807 on
+    brctl addif gw854807 "$WAN0"
+    ip link set dev gw854807 up
 }
 
-# Restart nftables service
-restart_nftables() {
-    local SERVICE=nftables
-    echo "Restarting $SERVICE..."
-    systemctl restart "$SERVICE"
-    if [[ $? -ne 0 ]]; then
-        printf "\e[31m*\e[0m Error: Failed to restart $SERVICE.\n"
-        exit 1
-    fi
+setup_gw965918_l2() {
+    # WAN1 - SECONDARY
+    brctl addbr gw965918
+    brctl stp gw965918 on
+    brctl addif gw965918 "$WAN1"
+    ip link set dev gw965918 up
 }
 
-# Flush existing nftables rules
-flush_nftables() {
-    echo "Flushing ruleset..."
-    nft flush ruleset
-}
+# ==============================================================================
+# FUNÇÃO PRINCIPAL
+# ==============================================================================
+dhcp() {
+    echo "[INFO] A inicializar as pontes de rede..."
+    setup_gw854807_l2
+    setup_gw965918_l2
 
-# Create main table
-main_table() {
-    echo "Creating table..."
-    nft add table inet firelux
-}
-
-# Main function for the blacklist system
-blacklist_set() {
-    echo "Configuring Blacklist..."
-    # Cria o set
-    nft add set inet firelux blacklist { type ipv4_addr \; flags interval \; }
-
-    blacklist_elements() {
-        echo "Adding elements to blacklist..."
-        nft add element inet firelux blacklist { 45.231.112.0/22 }
-    }
-
-    blacklist_rules() {
-        echo "Applying blacklist rules..."
-        nft add rule inet firelux input ip saddr @blacklist drop
-        nft add rule inet firelux forward ip saddr @blacklist drop
-    }
-
-    # Call Child Functions
-    blacklist_elements
-    blacklist_rules
-}
-
-# Create chains with default drop policy
-chains() {
-    echo "Creating chains..."
-    nft add chain inet firelux input { type filter hook input priority 0 \; policy drop \; }
-    nft add chain inet firelux output { type filter hook output priority 0 \; policy drop \; }
-    nft add chain inet firelux forward { type filter hook forward priority filter \; policy drop \; }
-    nft add chain inet firelux prerouting { type nat hook prerouting priority 0 \; policy accept \; }
-    nft add chain inet firelux postrouting { type nat hook postrouting priority srcnat \; policy accept \; }
-}
-
-# Setup logging for dropped packets
-setup_logging() {
-    echo "Setting up logging..."
-    nft add rule inet firelux input log prefix \"INPUT_DROP: \" level info
-    nft add rule inet firelux output log prefix \"OUTPUT_DROP: \" level info
-    nft add rule inet firelux forward log prefix \"FORWARD_DROP: \" level info
-}
-
-# Allow established and related connections (essential for stateful firewall)
-established_related() {
-    echo "Allowing established/related connections..."
-    nft add rule inet firelux input ct state established,related accept
-    nft add rule inet firelux output ct state established,related accept
-    nft add rule inet firelux forward ct state established,related accept
-}
-
-# Configure host-specific rules
-host() {
-    echo "Configuring host rules..."
-    # Filter Rules
-    loopback() {
-        nft add rule inet firelux input iif "lo" accept
-        nft add rule inet firelux output oif "lo" accept
-    }
-
-    # Filter Rules
-    icmp() {
-        nft add rule inet firelux input icmp type { echo-request, echo-reply, destination-unreachable, time-exceeded } accept
-        nft add rule inet firelux output icmp type { echo-request, echo-reply, destination-unreachable, time-exceeded } accept
-    }
-
-    # Filter Rules
-    dns() {
-        nft add rule inet firelux output udp dport 53 accept
-        nft add rule inet firelux output tcp dport 53 accept
-    }
-
-    # Filter Rules
-    ntp() {
-        nft add rule inet firelux output udp dport 123 accept
-    }
-
-    # Filter Rules
-    web() {
-        nft add rule inet firelux output tcp dport 80 accept
-        nft add rule inet firelux output tcp dport 443 accept
-        # SSH do Host
-        nft add rule inet firelux input tcp dport { 4634, 4635 } accept
-    }
-
-    # Call Child Functions
-    loopback
-    icmp
-    dns
-    ntp
-    web
-}
-
-# Função para as regras de NAT e Forwarding das VMs (necessário para manter seu ambiente funcional)
-vms_and_nat() {
-    echo "Configuring VM Forwarding and NAT..."
-    # DNAT
-    nft add rule inet firelux prerouting iifname "eth0" tcp dport 80 dnat ip to 10.0.11.3:80
-    nft add rule inet firelux prerouting iifname "eth0" tcp dport 443 dnat ip to 10.0.11.3:443
-    nft add rule inet firelux prerouting iifname "eth0" tcp dport 7881 dnat ip to 10.0.11.9:7881
-    nft add rule inet firelux prerouting iifname "eth0" udp dport 50000-60000 dnat ip to 10.0.11.9
+    # Definição Fixa de Prioridade
+    # gw854807 (WAN0) -> Métrica 10 (Prioritária)
+    # gw965918 (WAN1) -> Métrica 100 (Secundária)
     
-    # Forwarding Accept
-    nft add rule inet firelux forward ip daddr 10.0.11.3 tcp dport { 80, 443 } accept
-    nft add rule inet firelux forward ip daddr 10.0.11.9 tcp dport 7881 accept
-    nft add rule inet firelux forward ip daddr 10.0.11.9 udp dport 50000-60000 accept
-    nft add rule inet firelux forward iifname "br_tap111" oifname "eth0" accept
+    echo "[DHCP] A solicitar endereços IP (WAN0=Pri, WAN1=Sec)..."
     
-    # Masquerade
-    nft add rule inet firelux postrouting ip saddr 10.0.11.0/24 oifname "eth0" masquerade
-}
+    # Executa em background (-b) para não bloquear o script
+    dhcpcd -4 -b -m 10 gw854807
+    dhcpcd -4 -b -m 100 gw965918
 
-# Main function to orchestrate the setup
-main() {
-    RULES="
-    ip_forwarding
-    restart_nftables
-    flush_nftables
-    main_table
-    chains
-    blacklist_set
-    established_related
-    host
-    vms_and_nat
-    setup_logging
-    "
+    # Loop de Verificação (5 tentativas)
+    local count=1
+    local success=0
 
-    for RULE in $RULES
-    do
-        $RULE
+    while [ $count -le $DHCP_MAX_RETRIES ]; do
+        echo "[WAIT] Tentativa $count de $DHCP_MAX_RETRIES... A verificar IPs..."
+        
+        # Verifica se obteve IP (filtra saída do ip addr)
+        ip_wan0=$(ip -4 addr show gw854807 | grep "inet " | awk '{print $2}')
+        ip_wan1=$(ip -4 addr show gw965918 | grep "inet " | awk '{print $2}')
+
+        if [[ -n "$ip_wan0" ]] || [[ -n "$ip_wan1" ]]; then
+            echo "[OK] Conectividade estabelecida!"
+            if [[ -n "$ip_wan0" ]]; then
+                echo " -> gw854807 (WAN0): $ip_wan0 [PREFERIDA - ATIVA]"
+            fi
+            if [[ -n "$ip_wan1" ]]; then
+                echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA]"
+            fi
+            success=1
+            break
+        fi
+
+        sleep $DHCP_WAIT_TIME
+        ((count++))
     done
+
+    # Morte Súbita: Encerra se ambas falharem após 5 tentativas
+    if [ $success -eq 0 ]; then
+        echo "[CRITICAL] Falha total: Nenhuma interface obteve endereço IP."
+        echo "[STOP] A abortar o script."
+        exit 1
+    fi
+
+    echo "[INFO] Rede configurada com sucesso. A continuar a execução..."
 }
 
-# Execute main function
-main
+# Execução
+main_gw
