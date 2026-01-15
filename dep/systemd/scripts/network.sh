@@ -39,16 +39,6 @@ main_gw() {
         ip addr add 0.0.0.0/24 dev gw854807
         ip route add default via 0.0.0.0 dev gw854807
     }
-    # Trunk/WAN1
-    gw965918() {
-        # Secondary
-        brctl addbr gw965918
-        brctl stp gw965918 on
-        brctl addif gw965918 "$WAN1"
-        ip link set dev gw965918 up
-        ip addr add 0.0.0.0/24 dev gw965918
-        ip route add default via 0.0.0.0 dev gw965918
-    }
 
     # DNS, NTP, etc services of the real host
     tap16() {
