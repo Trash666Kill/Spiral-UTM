@@ -120,9 +120,9 @@ main_gw() {
     }
 
     # Call
-    dhcp
-    tap16
     gw471042
+    tap16
+    dhcp
 }
 
 # Subsidiary gateways according to the needs of the environment
