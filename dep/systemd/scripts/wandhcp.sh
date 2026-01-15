@@ -14,6 +14,9 @@ set -e
 #WAN1=""
 #LAN0=""
 
+DHCP_MAX_RETRIES=5
+DHCP_WAIT_TIME=5
+
 # Physical interfaces
 interfaces() {
     wan0() {
