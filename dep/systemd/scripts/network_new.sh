@@ -1,4 +1,3 @@
-
 #!/bin/bash
 
 # Close on any error
