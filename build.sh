@@ -217,13 +217,19 @@ packages() {
 }
 
 directories() {
-    printf "\e[32m*\e[0m CREATING SYSTEM DIRECTORIES\n"
+    printf "\e[32m*\e[0m CREATING DIRECTORIES\n"
+
+    # Create directories for temporary services and data
     mkdir -p /mnt/{Temp,Local/{Container/{A,B},USB/{A,B}},Remote/Servers}
-    mkdir -p /root/{Temp,.services/scheduled,.crypt}
-    chmod 600 /root/.crypt
-    
-    mkdir -p /var/log/rsync
-    chown "$TARGET_USER:$TARGET_USER" -R /var/log/rsync
+    mkdir -p /root/{Temp,.services/scheduled,.crypt} && chmod 600 /root/.crypt
+
+    # Adjusting the location of standard environment variables
+    mv /etc/environment /root/.services && ln -s /root/.services/environment /etc/environment
+
+    # Create directory for rsync logs and adjust permissions
+    mkdir /var/log/rsync && chown "$TARGET_USER":"$TARGET_USER" -R /var/log/rsync
+
+    # Create specific directories for the target user
     su - "$TARGET_USER" -c "mkdir -p /home/$TARGET_USER/{Temp,.services/scheduled,.crypt}"
 }
 
