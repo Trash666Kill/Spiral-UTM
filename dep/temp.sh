@@ -1,46 +1,9 @@
-#!/bin/bash
-
-# ==============================================================================
-# CONFIGURAÇÃO DE VARIÁVEIS
-# ==============================================================================
-DHCP_MAX_RETRIES=5      # Total de tentativas
-DHCP_WAIT_TIME=5        # Pausa (segundos) entre tentativas
-WAN0="eth0"             # Ajuste para a sua interface física real
-WAN1="eth1"             # Ajuste para a sua interface física real
-
-# ==============================================================================
-# FUNÇÕES AUXILIARES (LAYER 2)
-# ==============================================================================
-setup_gw854807_l2() {
-    # WAN0 - PRIMARY
-    brctl addbr gw854807
-    brctl stp gw854807 on
-    brctl addif gw854807 "$WAN0"
-    ip link set dev gw854807 up
-}
-
-setup_gw965918_l2() {
-    # WAN1 - SECONDARY
-    brctl addbr gw965918
-    brctl stp gw965918 on
-    brctl addif gw965918 "$WAN1"
-    ip link set dev gw965918 up
-}
-
-# ==============================================================================
-# FUNÇÃO PRINCIPAL
-# ==============================================================================
 dhcp() {
-    echo "[INFO] A inicializar as pontes de rede..."
-    setup_gw854807_l2
-    setup_gw965918_l2
+    gw854807
+    gw965918
 
-    # Definição Fixa de Prioridade
-    # gw854807 (WAN0) -> Métrica 10 (Prioritária)
-    # gw965918 (WAN1) -> Métrica 100 (Secundária)
-    
     echo "[DHCP] A solicitar endereços IP (WAN0=Pri, WAN1=Sec)..."
-    
+
     # Executa em background (-b) para não bloquear o script
     dhcpcd -4 -b -m 10 gw854807
     dhcpcd -4 -b -m 100 gw965918
@@ -51,21 +14,36 @@ dhcp() {
 
     while [ $count -le $DHCP_MAX_RETRIES ]; do
         echo "[WAIT] Tentativa $count de $DHCP_MAX_RETRIES... A verificar IPs..."
-        
+
         # Verifica se obteve IP (filtra saída do ip addr)
         ip_wan0=$(ip -4 addr show gw854807 | grep "inet " | awk '{print $2}')
         ip_wan1=$(ip -4 addr show gw965918 | grep "inet " | awk '{print $2}')
 
+        # Se pelo menos UMA interface tiver IP, entra no bloco de sucesso
         if [[ -n "$ip_wan0" ]] || [[ -n "$ip_wan1" ]]; then
             echo "[OK] Conectividade estabelecida!"
+
+            # --- CORREÇÃO LÓGICA DE PREFERÊNCIA ---
+            # Verifica PRIMEIRO se a WAN0 (gw854807) tem IP. 
+            # Se tiver, ela é a ativa (mesmo que a WAN1 também tenha).
             if [[ -n "$ip_wan0" ]]; then
                 ACTIVE_IFACE="gw854807"
+                # Exibe info da WAN0
                 echo " -> gw854807 (WAN0): $ip_wan0 [PREFERIDA - ATIVA]"
-            fi
-            if [[ -n "$ip_wan1" ]]; then
+                # Se a WAN1 também estiver ativa, apenas avisa, mas não muda a ACTIVE_IFACE
+                if [[ -n "$ip_wan1" ]]; then
+                    echo " -> gw965918 (WAN1): $ip_wan1 [ONLINE - STANDBY]"
+                fi
+            else
+                # Se caiu aqui, WAN0 está OFF e WAN1 está ON
                 ACTIVE_IFACE="gw965918"
-                echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA]"
+                echo " -> gw854807 (WAN0): OFFLINE"
+                echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA - ATIVA]"
             fi
+
+            # Captura o Altname da interface VENCEDORA
+            ALTNAME=$(ip addr show "$ACTIVE_IFACE" | awk '/altname/ {print $2; exit}')
+            
             success=1
             break
         fi
@@ -81,8 +59,13 @@ dhcp() {
         exit 1
     fi
 
-    echo "[INFO] Rede configurada com sucesso. A continuar a execução..."
-}
+    # Vincula a interface ao UTM como primária
+    # Remove qualquer definição anterior para evitar duplicidade
+    sed -i '/^ACTIVE_IFACE=/d' /etc/environment
+    echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
+    
+    sed -i '/^ACTIVE_ALTNAME=/d' /etc/environment
+    echo "ACTIVE_ALTNAME=$ALTNAME" >> /etc/environment
 
-# Execução
-main_gw
+    echo "[INFO] Rede configurada. Interface ativa: $ACTIVE_IFACE ($ALTNAME). A continuar..."
+}
