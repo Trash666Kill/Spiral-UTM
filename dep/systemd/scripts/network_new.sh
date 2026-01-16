@@ -97,6 +97,8 @@ main_gw() {
             echo "[STOP] A abortar o script."
             exit 1
         fi
+        sed -i '/^ACTIVE_IFACE=/d' /etc/environment
+        echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
 
         echo "[INFO] Rede configurada com sucesso. A continuar a execução..."
     }
