@@ -301,12 +301,61 @@ network_services() {
           chown bind:bind ./* && chmod 600 ./*.private && chmod 644 ./*.key
         )
         
-        # Configure BIND files (omitted detail for brevity, standard setup)
-        # Assumes config files are generated as per previous logic
-        # ... [BIND Configuration Logic retained from original script] ...
+        cat > /etc/bind/named.conf <<-EOF
+	include "/etc/bind/rndc.key";
+	include "/etc/bind/named.conf.options";
+	include "/etc/bind/named.conf.local";
+	EOF
+
+        cat > /etc/bind/named.conf.options <<-EOF
+	options {
+	    directory "/var/cache/bind";
+	    recursion yes; allow-query { any; };
+	    listen-on { 10.0.6.1; }; listen-on-v6 { none; };
+	    forwarders { 1.1.1.1; 8.8.8.8; 9.9.9.9; };
+	    forward only; dnssec-validation auto;
+	};
+	EOF
         
-        # NOTE: Logic simplified here for structure, assuming full implementation 
-        # mirrors the previous turn's logic but within this structural block.
+        NEW_SERIAL=$(date '+%Y%m%d%H')
+        KEY_FILES=$(find /etc/bind/keys -type f -name "K${DOMAIN}.*.key" | sort)
+        ZSK_KEY=$(echo "$KEY_FILES" | head -1)
+        KSK_KEY=$(echo "$KEY_FILES" | tail -1)
+
+        cat > "/etc/bind/zones/db.$DOMAIN" <<-EOF
+	\$TTL    86400
+	@       IN      SOA     ns1.$DOMAIN. admin.$DOMAIN. (
+	                        $NEW_SERIAL ; Serial
+	                        3600       ; Refresh
+	                        1800       ; Retry
+	                        604800     ; Expire
+	                        86400      ; Minimum TTL
+	                )
+	        IN      NS      ns1.$DOMAIN.
+	ns1     IN      A       0.0.0.0
+	@       IN      A       0.0.0.0
+	\$INCLUDE "$ZSK_KEY"
+	\$INCLUDE "$KSK_KEY"
+	EOF
+        chown bind:bind "/etc/bind/zones/db.$DOMAIN"
+        
+        ( cd /etc/bind/zones
+          dnssec-signzone -A -3 "$(head /dev/urandom | tr -dc A-F0-9 | head -c8)" -N INCREMENT -o "$DOMAIN" -t -K ../keys "db.$DOMAIN" >/dev/null 2>&1
+        )
+        chown bind:bind "/etc/bind/zones/db.$DOMAIN.signed"
+        
+        cat > /etc/bind/named.conf.local <<-EOF
+	zone "$DOMAIN" {
+	    type master;
+	    file "/etc/bind/zones/db.$DOMAIN.signed";
+	    allow-transfer { none; };
+	};
+	EOF
+        
+        chown -R bind:bind /etc/bind
+        named-checkconf
+        systemctl restart named && rndc reload
+        systemctl disable --now named --quiet
     }
 
     dhcp
@@ -326,9 +375,9 @@ network_script() {
     
     cp "$SOURCE" "$DEST"
     chmod 700 "$DEST"
-
-    sed -i "s|ip addr add 0.0.0.0/24 dev \([^ ]*\)|ip addr add $WAN0_IPV4/$WAN0_MASK dev \1|" "$DEST"
-    sed -i "s|ip route add default via 0.0.0.0 dev \([^ ]*\)|ip route add default via $WAN0_GATEWAY dev \1|" "$DEST"
+    
+    # Note: IP injection removed because WAN variables are no longer collected.
+    # The script now only copies the file.
 }
 
 firewall() {
