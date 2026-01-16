@@ -26,7 +26,7 @@ interfaces() {
 
     # Call
     wan0
-    wan1
+    #wan1
     lan0
 }
 
@@ -37,7 +37,7 @@ main_gw() {
         # Primary
         brctl addbr gw854807
         brctl stp gw854807 on
-        brctl addif gw854807 "$WAN0"
+        #brctl addif gw854807 "$WAN0"
         ip link set dev gw854807 up
     }
 
@@ -46,7 +46,7 @@ main_gw() {
         # Secondary
         brctl addbr gw965918
         brctl stp gw965918 on
-        brctl addif gw965918 "$WAN1"
+        #brctl addif gw965918 "$WAN1"
         ip link set dev gw965918 up
     }
 
