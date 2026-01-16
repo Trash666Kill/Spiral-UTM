@@ -229,31 +229,35 @@ directories() {
 
 ssh() {
     printf "\e[32m*\e[0m SETTING UP SSH\n"
+
+    # Install the required packages
     apt-get -y install openssh-server sshfs autossh > /dev/null 2>&1
 
-    if [ -f "sshd_config" ]; then
-        cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
-    fi
+    # Remove existing SSH configuration
+    rm /etc/ssh/sshd_config
 
-    rm -f /etc/motd && touch /etc/motd
+    # Add new SSH configuration file with custom parameters
+    cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
 
-    # Root keys
-    mkdir -p /root/.ssh && chmod 700 /root/.ssh
-    rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub
-    ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N '' < /dev/null > /dev/null 2>&1
+    # Remove the old motd file and create a new empty one
+    rm /etc/motd && touch /etc/motd
+
+    # Adjust root .ssh folder permissions to ensure security
+    chmod 600 /root/.ssh
+
+    # Create root SSH key and adjust permissions of authorized keys folder
     touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+    ssh-keygen -t rsa -b 4096 -N '' <<<$'\n' > /dev/null 2>&1
+    sed -i "s/@debian$/@$HOSTNAME/" /root/.ssh/id_rsa.pub
 
-    # User keys
-    su - "$TARGET_USER" -c "mkdir -p ~/.ssh && \
-                           rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub && \
-                           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' < /dev/null && \
-                           touch ~/.ssh/authorized_keys" > /dev/null 2>&1
-                           
-    USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
-    chmod 700 "$USER_HOME/.ssh"
-    chmod 600 "$USER_HOME/.ssh/authorized_keys"
-    
-    systemctl disable ssh --quiet
+    # Create SSH key for specified user and adjust permissions of .ssh folder
+    su - "$TARGET_USER" -c "echo | ssh-keygen -t rsa -b 4096 -N '' <<<$'\n'" > /dev/null 2>&1
+    su - "$TARGET_USER" -c "sed -i 's/@debian$/@$HOSTNAME/' /home/"$TARGET_USER"/.ssh/id_rsa.pub"
+    chmod 700 /home/"$TARGET_USER"/.ssh
+
+    # Create the user's authorized_keys file and adjust permissions
+    su - "$TARGET_USER" -c "echo | touch /home/"$TARGET_USER"/.ssh/authorized_keys"
+    chmod 600 /home/"$TARGET_USER"/.ssh/authorized_keys
 }
 
 network() {
