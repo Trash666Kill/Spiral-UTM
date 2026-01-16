@@ -16,10 +16,6 @@ interfaces() {
         ip link set dev "$WAN0" up
     }
 
-    wan1() {
-        ip link set dev "$WAN1" up
-    }
-
     lan0() {
         ip link set dev "$LAN0" up
     }
@@ -62,6 +58,7 @@ dhcp() {
 
         if [[ -n "$WAN1" ]]; then
             echo "[BRIDGE] A associar física $WAN1 à bridge gw965918..."
+            ip link set dev "$WAN1" up
             brctl addif gw965918 "$WAN1"
         fi
 
