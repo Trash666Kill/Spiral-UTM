@@ -410,50 +410,75 @@ EOF
 }
 
 trigger() {
-    printf "\e[32m*\e[0m SETTING UP SYSTEMD TRIGGER\n"
-    cp systemd/trigger.service /etc/systemd/system/
-    systemctl enable trigger --quiet
-    mkdir -p /root/.services
-    cp systemd/scripts/main.sh /root/.services/
-    chmod 700 /root/.services/main.sh
+    printf "\e[32m*\e[0m SETTING UP MAIN SYSTEMD SERVICE\n"
+
+    # Adding the main start service
+    cp systemd/trigger.service /etc/systemd/system && systemctl enable trigger --quiet
+
+    # Adding central configuration file
+    cp systemd/scripts/main.sh /root/.services && chmod 700 /root/.services/main.sh
 }
 
 grub() {
-    printf "\e[32m*\e[0m CONFIGURING GRUB\n"
-    cat > /etc/default/grub <<-EOF
-	GRUB_DEFAULT=0
-	GRUB_TIMEOUT=0
-	GRUB_DISTRIBUTOR=\`lsb_release -i -s 2> /dev/null || echo Debian\`
-	GRUB_CMDLINE_LINUX_DEFAULT=""
-	GRUB_CMDLINE_LINUX=""
-	EOF
-    update-grub >/dev/null 2>&1
+    printf "\e[32m*\e[0m SETTING UP GRUB\n"
+
+    # Remove the current GRUB configuration file (if it exists)
+    rm -f /etc/default/grub
+
+    # Create a new GRUB configuration file with custom parameters
+    printf 'GRUB_DEFAULT=0
+GRUB_TIMEOUT=0
+GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX=""' > /etc/default/grub && chmod 644 /etc/default/grub
+
+    # Update GRUB configuration
+    update-grub
+
+    # Completion message
+    if [ $? -eq 0 ]; then
+        printf "\e[32m*\e[0m GRUB CONFIGURATION UPDATED SUCCESSFULLY\n"
+    else
+        printf "\e[31m*\e[0m ERROR: FAILED TO UPDATE GRUB CONFIGURATION\n"
+    fi
 }
 
 later() {
-    printf "\e[32m*\e[0m SCHEDULING POST-REBOOT CLEANUP\n"
-    
-    # Identify initial user (UID 1000)
-    INITIAL_USER=$(grep ':1000:' /etc/passwd | cut -f1 -d:)
+    printf "\e[32m*\e[0m SCHEDULING SUBSEQUENT CONSTRUCTION PROCEDURES AFTER RESTART\n"
 
-    cat > /etc/init.d/later <<-EOF
-	#!/bin/bash
-	### BEGIN INIT INFO
-	# Provides:          later
-	# Required-Start:    \$all
-	# Required-Stop:
-	# Default-Start:     2 3 4 5
-	# Default-Stop:
-	# Short-Description: Post-reboot cleanup procedures.
-	### END INIT INFO
-	pkill -u $INITIAL_USER
-	userdel -r $INITIAL_USER
-	rm -rf /root/Spiral-UTM-main
-	update-rc.d later remove
-	rm -f /etc/init.d/later
-	EOF
-    chmod +x /etc/init.d/later
-    update-rc.d later defaults >/dev/null 2>&1
+    # Grep for UID 1000 (temp ~ user)
+    TARGET_USER=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+
+    if [[ -z "$TARGET_USER" ]]; then
+        printf "\e[33m* WARNING: No UID 1000 user found, skipping cleanup\e[0m\n"
+        return  # Exit early if no user
+    fi
+
+    # Creates the startup script that will be executed after reboot
+    printf '#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          later
+# Required-Start:    $all
+# Required-Stop:     
+# Default-Start:     2 3 4 5
+# Default-Stop:      
+# Short-Description: Procedures subsequent to instance construction only possible after reboot
+### END INIT INFO
+
+# End all processes for user %s
+pkill -u %s
+
+# Remove the user %s and its home directory
+userdel -r %s
+
+# Remove the WS folder from the /root directory
+rm -rf /root/Spiral-UTM-main
+
+# Remove the init.d script after it is executed
+rm -f /etc/init.d/later' "$TARGET_USER" "$TARGET_USER" "$TARGET_USER" "$TARGET_USER" > /etc/init.d/later && chmod +x /etc/init.d/later
+
+    # Add the script to the services that will start at boot
+    update-rc.d later defaults
 }
 
 finish() {

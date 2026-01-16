@@ -7,7 +7,7 @@ unset HISTFILE
 cd $PWD/dep
 
 update() {
-    printf "\e[32m*\e[0m UPDATING SYSTEM PACKAGES\n"
+    printf "\e[32m*\e[0m UPDATING EXISTING REPOSITORY AND PACKAGES\n"
 
     # Updates the list of available packages
     apt-get -y update > /dev/null 2>&1
@@ -17,120 +17,153 @@ update() {
 }
 
 interface() {
-    # Installing required packages for calculation
+    # Installing required packages
     apt-get -y install bc > /dev/null 2>&1
-    printf "\e[32m*\e[0m SELECTING WAN AND LAN INTERFACES, WAIT...\n"
+    printf "\e[32m*\e[0m CHOOSING THE BEST AVAILABLE INTERFACE, WAIT...\n"
 
     # Target IP for ping
     TARGET_IP="8.8.8.8"
 
-    # Variables for WAN selection
-    WAN0=""
+    # Variables to store the interface with the lowest latency, its altname, IP, netmask, and gateway
+    BEST_INTERFACE=""
     BEST_LATENCY=9999.0
+    BEST_ALTNAME=""
+    BEST_IP=""
+    BEST_NETMASK=""
+    BEST_GATEWAY=""
+    DEST_SCRIPT_PATH="/root/.services/network.sh"
 
-    # Iterate over active interfaces to find WAN (Internet)
+    # Iterate over active interfaces (status UP) starting with eth, en, or enp
     for IFACE in $(ip -o link show | awk -F': ' '/state UP/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}'); do
+        # Test ping on the interface with 3 packets, capture average latency
         LATENCY=$(ping -I "$IFACE" -4 -c 3 "$TARGET_IP" 2>/dev/null | awk -F'/' 'END {print $5}') || continue
 
+        # Compare current latency with the best found so far
         if [[ -n "$LATENCY" && $(echo "$LATENCY < $BEST_LATENCY" | bc -l) -eq 1 ]]; then
             BEST_LATENCY="$LATENCY"
-            WAN0="$IFACE"
+            BEST_INTERFACE="$IFACE"
+            # Extract the first altname of the interface
+            BEST_ALTNAME=$(ip addr show "$IFACE" | awk '/altname/ {print $2; exit}')
+            # Extract the IP address and netmask (CIDR) of the interface
+            IP_INFO=$(ip -4 addr show "$IFACE" | grep 'inet' | awk '{print $2}' | head -n1)
+            BEST_IP=$(echo "$IP_INFO" | cut -d'/' -f1)
+            BEST_NETMASK=$(echo "$IP_INFO" | cut -d'/' -f2)
+            # Extract the gateway for the interface
+            BEST_GATEWAY=$(ip route show dev "$IFACE" | awk '/default/ {print $3}')
         fi
     done
 
-    if [[ -z "$WAN0" ]]; then
-        printf "\033[31m*\033[0m ERROR: NO VALID WAN INTERFACE FOUND.\n"
+    # Check if a valid interface was found
+    if [[ -z "$BEST_INTERFACE" ]]; then
+        printf "\033[31m*\033[0m ERROR: NO VALID INTERFACE FOUND TO WRITE TO /etc/environment\n"
         exit 1
     fi
 
-    printf "\e[32m*\e[0m WAN0 INTERFACE: \033[32m%s\033[0m (Latency: %s ms)\n" "$WAN0" "$BEST_LATENCY"
+    # Convert CIDR to decimal netmask for /etc/environment
+    case "$BEST_NETMASK" in
+        8) DECIMAL_NETMASK="255.0.0.0" ;;
+        16) DECIMAL_NETMASK="255.255.0.0" ;;
+        24) DECIMAL_NETMASK="255.255.255.0" ;;
+        32) DECIMAL_NETMASK="255.255.255.255" ;;
+        *) printf "\033[31m*\033[0m ERROR: UNSUPPORTED NETMASK \033[32m/%s\033[0m\n" "$BEST_NETMASK"; exit 1 ;;
+    esac
 
-    # LAN Selection logic
-    mapfile -t DOWN_INTERFACES < <(ip -o link show | awk -F': ' '/state DOWN/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}')
-    LAN0=""
+    # Assign to global variable
+    NIC0="$BEST_INTERFACE"
+    printf "\e[32m*\e[0m CHOSEN INTERFACE: \033[32m%s\033[0m, LATENCY OF \033[32m%s ms\033[0m FOR \033[32m%s\033[0m\n" "$NIC0" "$BEST_LATENCY" "$TARGET_IP"
 
-    if [[ ${#DOWN_INTERFACES[@]} -gt 0 ]]; then
-        printf "\e[32m*\e[0m AVAILABLE INACTIVE INTERFACES FOR LAN0:\n"
-        for i in "${!DOWN_INTERFACES[@]}"; do
-            printf "    \e[33m%d)\e[0m %s\n" "$((i+1))" "${DOWN_INTERFACES[$i]}"
-        done
-        read -p "  ENTER THE NUMBER FOR LAN0: " CHOICE
-        if [[ "$CHOICE" =~ ^[0-9]+$ && "$CHOICE" -ge 1 && "$CHOICE" -le "${#DOWN_INTERFACES[@]}" ]]; then
-            LAN0="${DOWN_INTERFACES[$((CHOICE-1))]}"
-            printf "\e[32m*\e[0m LAN0 INTERFACE SET TO: \033[32m%s\033[0m\n" "$LAN0"
-        else
-            printf "\e[33m*\e[0m WARNING: INVALID OPTION. NO LAN0 CONFIGURED.\n"
-        fi
+    # Write NIC0, NIC0_ALT, IPV4, GW, and MASK to /etc/environment
+    if [[ -n "$BEST_ALTNAME" && -n "$BEST_INTERFACE" && -n "$BEST_IP" && -n "$BEST_GATEWAY" && -n "$DECIMAL_NETMASK" ]]; then
+        printf "\e[32m*\e[0m WRITING ALTNAME \033[32m%s\033[0m, INTERFACE \033[32m%s\033[0m, IP \033[32m%s\033[0m, GATEWAY \033[32m%s\033[0m, AND NETMASK \033[32m%s\033[0m TO /etc/environment\n" "$BEST_ALTNAME" "$NIC0" "$BEST_IP" "$BEST_GATEWAY" "$DECIMAL_NETMASK"
+        touch /etc/environment
+        sed -i '/^NIC0=/d' /etc/environment
+        sed -i '/^NIC0_ALT=/d' /etc/environment
+        sed -i '/^IPV4=/d' /etc/environment
+        sed -i '/^GW=/d' /etc/environment
+        sed -i '/^MASK=/d' /etc/environment
+        echo "NIC0=$NIC0" >> /etc/environment
+        echo "NIC0_ALT=$BEST_ALTNAME" >> /etc/environment
+        echo "IPV4=$BEST_IP" >> /etc/environment
+        echo "GW=$BEST_GATEWAY" >> /etc/environment
+        echo "MASK=$DECIMAL_NETMASK" >> /etc/environment
+    else
+        printf "\033[31m*\033[0m ERROR: NO VALID INTERFACE, ALTNAME, IP, GATEWAY, OR NETMASK FOUND TO WRITE TO /etc/environment\n"
+        exit 1
     fi
-
-    # Write variables to /etc/environment
-    printf "\e[32m*\e[0m WRITING NETWORK VARIABLES TO /etc/environment\n"
-    touch /etc/environment
-    sed -i '/^WAN0=/d' /etc/environment
-    sed -i '/^LAN0=/d' /etc/environment
-    
-    # Writing ONLY the interface name as requested
-    echo "WAN0=$WAN0" >> /etc/environment
-    if [[ -n "${LAN0-}" ]]; then
-      echo "LAN0=$LAN0" >> /etc/environment
-    fi
-}
-
-domain() {
-    printf "\e[32m*\e[0m DOMAIN CONFIGURATION\n"
-    read -p "PLEASE ENTER THE DOMAIN NAME (e.g., example.local): " DOMAIN_INPUT
-    DOMAIN=$(echo "$DOMAIN_INPUT" | tr '[:upper:]' '[:lower:]' | xargs)
 }
 
 hostname() {
-    # Generates a new hostname
-    HOSTNAME="utm$(shuf -i 10000-99999 -n 1)"
+    # Install the required packages
+    apt-get -y install uuid uuid-runtime > /dev/null 2>&1
+
+    # Generates a new hostname based on the chassis type and a random value
+    HOSTNAME="srv$(shuf -i 10000-99999 -n 1)"
 
     printf "\e[32m*\e[0m GENERATED HOSTNAME: \033[32m%s\033[0m\n" "$HOSTNAME"
 
-    hostnamectl set-hostname "$HOSTNAME"
-    
+    # Remove the /etc/hostname file and write the new hostname
+    rm /etc/hostname
+    printf "$HOSTNAME" > /etc/hostname
+
+    # Remove the /etc/hosts file and writes the new hosts entries
     rm /etc/hosts
     printf "127.0.0.1       localhost
-127.0.1.1       $HOSTNAME
+127.0.1.1       "$HOSTNAME"
 
 ::1     localhost ip6-localhost ip6-loopback
 ff02::1 ip6-allnodes
 ff02::2 ip6-allrouters" > /etc/hosts
 }
 
-global_settings() {
-    TIMEZONE="America/Sao_Paulo"
-    timedatectl set-timezone "$TIMEZONE"
-}
-
 target_user() {
+    # Install the sudo package
     apt-get -y install sudo > /dev/null 2>&1
+
+    # Modify /etc/profile to disable command history
     sed -i '$ a unset HISTFILE\nexport HISTSIZE=0\nexport HISTFILESIZE=0\nexport HISTCONTROL=ignoreboth' /etc/profile
 
     printf "\e[32m*\e[0m CREATING USER \e[32mSysOp\e[0m\n"
-    
-    TARGET_USER="sysop"
-    TARGET_UID="1001"
-    TARGET_GID="1001"
 
-    if ! getent group "$TARGET_USER" >/dev/null; then
-        groupadd -g "$TARGET_GID" "$TARGET_USER"
-    fi
-    if ! id "$TARGET_USER" >/dev/null 2>&1; then
-        useradd -m -u "$TARGET_UID" -g "$TARGET_GID" -c "SysOp" -s /bin/bash "$TARGET_USER"
-    fi
-    usermod -aG sudo "$TARGET_USER"
+    # Create the sysop group with GID 1001
+    groupadd -g 1001 sysop
+
+    # Create the sysop user with UID 1001, sysop group, and bash shell
+    useradd -m -u 1001 -g 1001 -c "SysOp" -s /bin/bash sysop
+
+    # Get the name of the created user
+    TARGET_USER=$(grep 1001 /etc/passwd | cut -f 1 -d ":")
+
+    # Add the user to the sudo group
+    /sbin/usermod -aG sudo "$TARGET_USER"
 }
 
 passwords() {
+    # Install the package required for password generation
     apt-get -y install pwgen > /dev/null 2>&1
 
+    # Generate two secure passwords with special characters and 18 characters
     PASSWORD_ROOT=$(pwgen -s 18 1)
     PASSWORD_TARGET=$(pwgen -s 18 1)
 
+    # Check if the TARGET_USER exists in the system
+    if ! id "$TARGET_USER" &>/dev/null; then
+        printf "\e[31m* ERROR:\e[0m USER '$TARGET_USER' DOES NOT EXIST. TERMINATING SCRIPT.\n"
+        exit 1
+    fi
+
+    # Change the root user's password
     echo "root:$PASSWORD_ROOT" | chpasswd
+    if [ $? -ne 0 ]; then
+        printf "\e[31m* ERROR:\e[0m FAILED TO CHANGE ROOT PASSWORD.\n"
+        exit 1
+    fi
+
+    # Change the TARGET_USER's password
     echo "$TARGET_USER:$PASSWORD_TARGET" | chpasswd
+    if [ $? -ne 0 ]; then
+        printf "\e[31m* ERROR:\e[0m FAILED TO CHANGE PASSWORD FOR USER '$TARGET_USER'.\n"
+        exit 1
+    fi
 
     echo -e "\033[32m*\033[0m GENERATED PASSWORD FOR \033[32mSysOp\033[0m USER: \033[32m\"$PASSWORD_TARGET\"\033[0m"
     echo -e "\033[32m*\033[0m GENERATED PASSWORD FOR \033[32mRoot\033[0m USER: \033[32m\"$PASSWORD_ROOT\"\033[0m"
@@ -138,67 +171,89 @@ passwords() {
 
 packages() {
     text_editor() {
+        # Install text editor package
         printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: TEXT EDITOR\n"
-        apt-get -y install vim > /dev/null 2>&1
+        EDITOR="vim"
+        apt-get -y install $EDITOR > /dev/null 2>&1
     }
 
     network_tools() {
+        # Install network tools packages
         printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: NETWORK TOOLS\n"
-        TOOLS="nfs-common tcpdump traceroute iperf ethtool geoip-bin socat speedtest-cli bridge-utils"
-        apt-get -y install $TOOLS > /dev/null 2>&1
+        NETWORK="nfs-common tcpdump traceroute iperf ethtool geoip-bin socat speedtest-cli bridge-utils"
+        apt-get -y install $NETWORK > /dev/null 2>&1
     }
 
     security() {
+        # Install security tools
         printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: SECURITY TOOLS\n"
-        apt-get -y install apparmor-utils > /dev/null 2>&1
+        SECURITY="apparmor-utils"
+        apt-get -y install $SECURITY > /dev/null 2>&1
     }
 
     compression() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: COMPRESSION\n"
-        apt-get -y install unzip xz-utils bzip2 pigz > /dev/null 2>&1
+        # Install compression and archiving packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: COMPRESSION AND ARCHIVING\n"
+        COMPRESSION="unzip xz-utils bzip2 pigz"
+        apt-get -y install $COMPRESSION > /dev/null 2>&1
     }
 
     scripting() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: SCRIPTING\n"
-        apt-get -y install sshpass python3-apt > /dev/null 2>&1
+        # Install scripting and automation support packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: SCRIPTING AND AUTOMATION SUPPORT\n"
+        SCRIPTING="sshpass python3-apt-get"
+        apt-get -y install $SCRIPTING > /dev/null 2>&1
     }
 
     monitoring() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: MONITORING\n"
-        MON="screen htop sysstat stress lm-sensors nload smartmontools"
-        apt-get -y install $MON > /dev/null 2>&1
+        # Install system monitoring and diagnostics packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: SYSTEM MONITORING AND DIAGNOSTICS\n"
+        MONITORING="screen htop sysstat stress lm-sensors nload smartmontools"
+        apt-get -y install $MONITORING > /dev/null 2>&1
     }
 
-    disk_utils() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: DISK UTILITIES\n"
-        DISK="hdparm dosfstools cryptsetup uuid uuid-runtime rsync"
-        apt-get -y install $DISK > /dev/null 2>&1
+    fs_utils() {
+        # Install disk and file system utilities packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: DISK AND FILE SYSTEM UTILITIES\n"
+        FS_UTILS="hdparm ntfs-3g dosfstools btrfs-progs mergerfs cryptsetup uuid rsync"
+        apt-get -y install $FS_UTILS > /dev/null 2>&1
     }
 
     connectivity() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: CONNECTIVITY\n"
-        apt-get -y install net-tools > /dev/null 2>&1
+        # Install connectivity utilities packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: CONNECTIVITY UTILITIES\n"
+        CONNECTIVITY="curl wget net-tools"
+        apt-get -y install $CONNECTIVITY > /dev/null 2>&1
     }
 
-    power_mgmt() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: POWER MANAGEMENT\n"
-        apt-get -y install pm-utils acpi acpid fwupd > /dev/null 2>&1
+    power_management() {
+        # Install power and system management utilities packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: POWER AND SYSTEM MANAGEMENT UTILITIES\n"
+        POWER_MGMT="pm-utils acpi acpid fwupd"
+        apt-get -y install $POWER_MGMT > /dev/null 2>&1
     }
 
-    resource_ctrl() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: RESOURCE CONTROL\n"
-        apt-get -y install cpulimit > /dev/null 2>&1
+    resource_control() {
+        # Install resource limiting and control packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: RESOURCE LIMITING AND CONTROL\n"
+        RESOURCE_CTRL="cpulimit"
+        apt-get -y install $RESOURCE_CTRL > /dev/null 2>&1
     }
 
-    firmware() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: FIRMWARE\n"
-        FIRM="firmware-misc-nonfree firmware-realtek firmware-atheros"
-        apt-get -y install $FIRM > /dev/null 2>&1
+    graphics_network() {
+        # Install graphics and network drivers and firmware packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: GRAPHICS AND NETWORK DRIVERS AND FIRMWARE\n"
+        MISC="firmware-misc-nonfree"
+        NETWORK="firmware-realtek firmware-atheros"
+        GRAPHICS="firmware-amd-graphics"
+        apt-get -y install $MISC $NETWORK > /dev/null 2>&1
     }
 
-    extra() {
-        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: EXTRA UTILITIES\n"
-        apt-get -y install tree > /dev/null 2>&1
+    extra_utils() {
+        # Install additional utilities packages
+        printf "\e[32m*\e[0m INSTALLING PACKAGE CATEGORY: ADDITIONAL UTILITIES\n"
+        EXTRA_UTILS="tree"
+        apt-get -y install $EXTRA_UTILS > /dev/null 2>&1
     }
 
     # Call
@@ -208,194 +263,141 @@ packages() {
     compression
     scripting
     monitoring
-    disk_utils
+    fs_utils
     connectivity
-    power_mgmt
-    resource_ctrl
-    firmware
-    extra
+    power_management
+    resource_control
+    graphics_network
+    extra_utils
 }
 
 directories() {
-    printf "\e[32m*\e[0m CREATING SYSTEM DIRECTORIES\n"
+    printf "\e[32m*\e[0m CREATING DIRECTORIES\n"
+
+    # Create directories for temporary services and data
     mkdir -p /mnt/{Temp,Local/{Container/{A,B},USB/{A,B}},Remote/Servers}
-    mkdir -p /root/{Temp,.services/scheduled,.crypt}
-    chmod 600 /root/.crypt
-    
-    mkdir -p /var/log/rsync
-    chown "$TARGET_USER:$TARGET_USER" -R /var/log/rsync
+    mkdir -p /root/{Temp,.services/scheduled,.crypt} && chmod 600 /root/.crypt
+
+    # Adjusting the location of standard environment variables
+    mv /etc/environment /root/.services && ln -s /root/.services/environment /etc/environment
+
+    # Create directory for rsync logs and adjust permissions
+    mkdir /var/log/rsync && chown "$TARGET_USER":"$TARGET_USER" -R /var/log/rsync
+
+    # Create specific directories for the target user
     su - "$TARGET_USER" -c "mkdir -p /home/$TARGET_USER/{Temp,.services/scheduled,.crypt}"
 }
 
-ssh() {
-    printf "\e[32m*\e[0m SETTING UP SSH\n"
-    apt-get -y install openssh-server sshfs autossh > /dev/null 2>&1
+trigger() {
+    printf "\e[32m*\e[0m SETTING UP MAIN SYSTEMD SERVICE\n"
 
-    if [ -f "sshd_config" ]; then
-        cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
-    fi
+    # Adding the main start service
+    cp systemd/trigger.service /etc/systemd/system && systemctl enable trigger --quiet
 
-    rm -f /etc/motd && touch /etc/motd
-
-    # Root keys
-    mkdir -p /root/.ssh && chmod 700 /root/.ssh
-    rm -f /root/.ssh/id_rsa /root/.ssh/id_rsa.pub
-    ssh-keygen -t rsa -b 4096 -f /root/.ssh/id_rsa -N '' < /dev/null > /dev/null 2>&1
-    touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
-
-    # User keys
-    su - "$TARGET_USER" -c "mkdir -p ~/.ssh && \
-                           rm -f ~/.ssh/id_rsa ~/.ssh/id_rsa.pub && \
-                           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N '' < /dev/null && \
-                           touch ~/.ssh/authorized_keys" > /dev/null 2>&1
-                           
-    USER_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
-    chmod 700 "$USER_HOME/.ssh"
-    chmod 600 "$USER_HOME/.ssh/authorized_keys"
-    
-    systemctl disable ssh --quiet
+    # Adding central configuration file
+    cp systemd/scripts/main.sh /root/.services && chmod 700 /root/.services/main.sh
 }
 
-network_services() {
-    printf "\e[32m*\e[0m CONFIGURING NETWORK SERVICES\n"
+network() {
+    printf "\e[32m*\e[0m SETTING UP NETWORK\n"
 
-    dhcp() {
-        printf "  - Configuring DHCP (KEA)\n"
-        apt-get -y install kea-dhcp4-server > /dev/null 2>&1
-        cp DHCP/kea-dhcp4.conf /etc/kea/ && chmod 755 /etc/kea
-        systemctl disable --now kea-dhcp4-server --quiet
-    }
+    # Adding Network Configuration File
+    cp systemd/scripts/network.sh /root/.services/ && chmod 700 /root/.services/network.sh
+
+    # Disabling services (with full error suppression)
+    systemctl disable networking --quiet 2>/dev/null || true
+    systemctl disable ModemManager --quiet 2>/dev/null || true
+    systemctl disable wpa_supplicant --quiet 2>/dev/null || true
+    systemctl disable NetworkManager-wait-online --quiet 2>/dev/null || true
+    systemctl disable NetworkManager.service --quiet 2>/dev/null || true
+
+    # Collects the MAC address and stores it in the variable
+    MAC=$(ip link show "$NIC0" | awk '/ether/ {print $2}')
+
+    # Update the MAC address in /root/.services/network.sh
+    sed -i "/ip link set dev br_vlan710 address/s/$/ $MAC/" /root/.services/network.sh
 
     ntp() {
-        printf "  - Configuring NTP (Chrony)\n"
-        apt-get -y install chrony > /dev/null 2>&1
-        cat >> /etc/chrony/chrony.conf <<-EOF
+        TIMEZONE="America/Sao_Paulo"
 
-	# Servidores NTP Upstream
-	pool b.st1.ntp.br iburst
-	pool a.st1.ntp.br iburst
-	pool 200.186.125.195 iburst
+        # Install and configure the 'systemd-timesyncd' time synchronization service
+        apt-get -y install systemd-timesyncd > /dev/null 2>&1
 
-	# Interface de escuta e resposta
-	allow all
-	EOF
-        sed -i '/^pool 2\.debian\.pool\.ntp\.org iburst/d' /etc/chrony/chrony.conf
-        systemctl restart chrony
-        systemctl disable --now chrony --quiet
+        # Disables and stops the systemd-timesyncd service
+        systemctl disable --now systemd-timesyncd --quiet
+
+        # Fixing NTP Server
+        sed -i 's/#NTP=/NTP=10.0.6.1/' /etc/systemd/timesyncd.conf
+
+        # Set the time zone
+        export TZ=${TIMEZONE}
+
+        # Remove the current time zone setting
+        rm /etc/localtime
+
+        # Copy time zone setting
+        cp /usr/share/zoneinfo/${TIMEZONE} /etc/localtime
+
+        # Update the system configuration to use the correct time zone
+        timedatectl set-timezone ${TIMEZONE}
     }
 
     dns() {
-        printf "  - Configuring DNS (BIND9)\n"
-        apt-get -y install bind9 bind9-utils bind9-doc dnsutils > /dev/null 2>&1
-        rm -rf /etc/bind
-        mkdir -p /etc/bind/{zones,keys}
-        chown -R bind:bind /etc/bind
-        chmod 2755 /etc/bind && chmod 755 /etc/bind/zones && chmod 750 /etc/bind/keys
-        
-        rndc-confgen -a -c /etc/bind/rndc.key >/dev/null 2>&1
-        chown bind:bind /etc/bind/rndc.key && chmod 640 /etc/bind/rndc.key
-        
-        ( cd /etc/bind/keys
-          dnssec-keygen -a ECDSAP256SHA256 -n ZONE "$DOMAIN" >/dev/null 2>&1
-          dnssec-keygen -a ECDSAP256SHA256 -n ZONE -f KSK "$DOMAIN" >/dev/null 2>&1
-          chown bind:bind ./* && chmod 600 ./*.private && chmod 644 ./*.key
-        )
-        
-        cat > /etc/bind/named.conf <<-EOF
-	include "/etc/bind/rndc.key";
-	include "/etc/bind/named.conf.options";
-	include "/etc/bind/named.conf.local";
-	EOF
+        # Install and configure the 'dnsmasq' DNS Server
+        apt-get -y install dnsmasq dnsutils tcpdump > /dev/null 2>&1
 
-        cat > /etc/bind/named.conf.options <<-EOF
-	options {
-	    directory "/var/cache/bind";
-	    recursion yes; allow-query { any; };
-	    listen-on { 10.0.6.1; }; listen-on-v6 { none; };
-	    forwarders { 1.1.1.1; 8.8.8.8; 9.9.9.9; };
-	    forward only; dnssec-validation auto;
-	};
-	EOF
-        
-        NEW_SERIAL=$(date '+%Y%m%d%H')
-        KEY_FILES=$(find /etc/bind/keys -type f -name "K${DOMAIN}.*.key" | sort)
-        ZSK_KEY=$(echo "$KEY_FILES" | head -1)
-        KSK_KEY=$(echo "$KEY_FILES" | tail -1)
+        # Disables and stops the dnsmasq service
+        systemctl disable --now dnsmasq --quiet
 
-        cat > "/etc/bind/zones/db.$DOMAIN" <<-EOF
-	\$TTL    86400
-	@       IN      SOA     ns1.$DOMAIN. admin.$DOMAIN. (
-	                        $NEW_SERIAL ; Serial
-	                        3600       ; Refresh
-	                        1800       ; Retry
-	                        604800     ; Expire
-	                        86400      ; Minimum TTL
-	                )
-	        IN      NS      ns1.$DOMAIN.
-	ns1     IN      A       0.0.0.0
-	@       IN      A       0.0.0.0
-	\$INCLUDE "$ZSK_KEY"
-	\$INCLUDE "$KSK_KEY"
-	EOF
-        chown bind:bind "/etc/bind/zones/db.$DOMAIN"
-        
-        ( cd /etc/bind/zones
-          dnssec-signzone -A -3 "$(head /dev/urandom | tr -dc A-F0-9 | head -c8)" -N INCREMENT -o "$DOMAIN" -t -K ../keys "db.$DOMAIN" >/dev/null 2>&1
-        )
-        chown bind:bind "/etc/bind/zones/db.$DOMAIN.signed"
-        
-        cat > /etc/bind/named.conf.local <<-EOF
-	zone "$DOMAIN" {
-	    type master;
-	    file "/etc/bind/zones/db.$DOMAIN.signed";
-	    allow-transfer { none; };
-	};
-	EOF
-        
-        chown -R bind:bind /etc/bind
-        named-checkconf
-        systemctl restart named && rndc reload
-        systemctl disable --now named --quiet
+        # Removing the default dnsmasq configuration
+        rm /etc/dnsmasq.conf
+
+        # Adding central configuration file
+        cp systemd/scripts/main.conf /etc/dnsmasq.d/
+
+        # Defining domain based on host
+        sed -i "s/domain=.*/domain=$HOSTNAME.local/" /etc/dnsmasq.d/main.conf
+
+        # Creating dnsmasq configuration directories
+        mkdir /etc/dnsmasq.d/config
+
+        # Adding the hostname to the hosts file
+        printf '10.0.10.254 %s.local' "$HOSTNAME" > /etc/dnsmasq.d/config/hosts
+
+        # Fixing DNS Server
+        chattr + /etc/resolv.conf
+
+        # Creates the Upstream DNS server declaration file that will be used by dnsmasq
+        grep '^nameserver' /etc/resolv.conf | awk '{print "nameserver " $2}' | tee -a /etc/dnsmasq.d/config/resolv > /dev/null
+
+        # Creating the dnsmasq IP reservations file
+        touch /etc/dnsmasq.d/config/reservations
     }
 
-    dhcp
+    # Call
     ntp
     dns
 }
 
-network_script() {
-    printf "\e[32m*\e[0m SETTING UP DYNAMIC NETWORK SCRIPT\n"
-    SOURCE="$DEP_DIR/systemd/scripts/network.sh"
-    DEST="/root/.services/network.sh"
-
-    if [[ ! -f "$SOURCE" ]]; then
-        printf "\e[31m*\e[0m ERROR: network.sh NOT FOUND.\n"
-        exit 1
-    fi
-    
-    cp "$SOURCE" "$DEST"
-    chmod 700 "$DEST"
-    
-    # Note: IP injection removed because WAN variables are no longer collected.
-    # The script now only copies the file.
-}
-
 firewall() {
     printf "\e[32m*\e[0m SETTING UP FIREWALL\n"
+
+    # Install required dependencies
     apt-get -y install nftables rsyslog > /dev/null 2>&1
 
+    # Configure firewall services and scripts
     systemctl disable --now nftables --quiet
     cp -r systemd/scripts/firewall /root/.services/
-    chmod 700 /root/.services/firewall/* && chattr +i /root/.services/firewall/a.sh
+    chmod 700 /root/.services/firewall/*.sh && chattr +i /root/.services/firewall/{a.sh,b.sh}
 
-    # Logging configuration
+    # Create the rsyslog configuration file to filter nftables logs
     cat <<EOF > /etc/rsyslog.d/50-nftables.conf
-:msg, contains, "INPUT_DROP: " /var/log/nftables.log
-:msg, contains, "OUTPUT_DROP: " /var/log/nftables.log
+# /etc/rsyslog.d/50-nftables.conf
 :msg, contains, "FORWARD_DROP: " /var/log/nftables.log
 & stop
 EOF
 
+    # Create the configuration file for nftables log rotation
     cat <<'EOF' > /etc/logrotate.d/nftables
 /var/log/nftables.log
 {
@@ -412,62 +414,223 @@ EOF
 EOF
 }
 
-trigger() {
-    printf "\e[32m*\e[0m SETTING UP SYSTEMD TRIGGER\n"
-    cp systemd/trigger.service /etc/systemd/system/
-    systemctl enable trigger --quiet
-    mkdir -p /root/.services
-    cp systemd/scripts/main.sh /root/.services/
-    chmod 700 /root/.services/main.sh
+mount() {
+    printf "\e[32m*\e[0m SETTING MOUNT POINTS AND FILE SHARING\n"
+
+    # Install NFS sharing service
+    apt-get -y install nfs-kernel-server > /dev/null 2>&1
+
+    # Disable and stop NFS related service
+    systemctl disable --now nfs-kernel-server --quiet
+
+    # Adding Mount Configuration File
+    cp systemd/scripts/mount.sh /root/.services/ && chmod 700 /root/.services/mount.sh
+
+    # Create NFS export configuration
+    printf '#/mnt/Local/Container/A 172.16.0.0(rw,sync,crossmnt,no_subtree_check,no_root_squash)' > /etc/exports
+}
+
+hypervisor() {
+    printf "\e[32m*\e[0m SETTING UP HYPERVISOR\n"
+
+    kvm() {
+        # Identifies the processor manufacturer
+        CPU=$(lscpu | grep -E 'Vendor ID|ID de fornecedor' | cut -f 2 -d ":" | sed -n 1p | awk '{$1=$1}1')
+
+        # Install KVM and required dependencies
+        apt-get -y install qemu-kvm libvirt0 libvirt-daemon-system > /dev/null 2>&1
+
+        # Disable and stop libvirt service to configure manually
+        systemctl disable --now libvirtd --quiet
+
+        # Adds target user to 'libvirt' group for management permissions
+        gpasswd libvirt -a "$TARGET_USER" > /dev/null 2>&1
+
+        # Configures the kernel module with nested virtualization support.
+        touch /etc/modprobe.d/kvm.conf
+        case "$CPU" in
+            GenuineIntel)
+                printf 'options kvm_intel nested=1' > /etc/modprobe.d/kvm.conf
+                /sbin/modprobe -r kvm_intel
+                /sbin/modprobe kvm_intel
+                ;;
+            AuthenticAMD)
+                printf 'options kvm_amd nested=1' > /etc/modprobe.d/kvm.conf
+                /sbin/modprobe -r kvm_amd
+                /sbin/modprobe kvm_amd
+                ;;
+            *)
+                printf "\e[32m** UNKNOWN OR UNSUPPORTED CPU ARCHITECTURE **\e[0m\n"
+                ;;
+            esac
+
+        # Creating directories for scripts and logs
+        mkdir /var/log/virsh && chown "$TARGET_USER":"$TARGET_USER" -R /var/log/virsh
+
+        # Add startup script to start libvirt service and start virtual machines
+        cp systemd/scripts/virtual-machine.sh /root/.services/ && chmod 700 /root/.services/virtual-machine.sh
+    }
+
+    lxc() {
+        # Install LXC and required dependencies
+        apt-get -y install lxc > /dev/null 2>&1
+
+        # Allow custom storage path
+        tee /etc/apparmor.d/usr.bin.lxc-copy <<'EOF'
+abi <abi/4.0>,
+#include <tunables/global>
+
+/usr/bin/lxc-copy flags=(attach_disconnected) {
+  #include <abstractions/lxc/start-container>
+  /mnt/Local/Container/A/lxc/** rw,
+  mount options=(rw, move) -> /mnt/Local/Container/A/lxc/**,
+}
+EOF
+        apparmor_parser -r /etc/apparmor.d/usr.bin.lxc-copy
+
+        # Disable and stop lxc and lxc-net services
+        systemctl disable --now lxc --quiet
+        systemctl disable --now lxc-net --quiet && systemctl mask lxc-net --quiet
+
+        # Remove lxc-net related configuration files
+        rm /etc/default/lxc-net && rm /etc/lxc/default.conf
+
+        # Create the LXC configuration file
+        printf 'lxc.net.0.type = veth
+lxc.net.0.link = br_tap110
+lxc.net.0.flags = up
+
+lxc.apparmor.profile = generated
+lxc.apparmor.allow_nesting = 1' > /etc/lxc/default.conf
+
+        # Create log directory and adjust permissions
+        mkdir /var/log/lxc; chown "$TARGET_USER":"$TARGET_USER" -R /var/log/lxc
+
+        # Add startup script to start lxc service and start containers
+        cp systemd/scripts/container.sh /root/.services/ && chmod 700 /root/.services/container.sh
+    }
+
+    # Call
+    kvm
+    lxc
+}
+
+ssh() {
+    printf "\e[32m*\e[0m SETTING UP SSH\n"
+
+    # Install the required packages
+    apt-get -y install openssh-server sshfs autossh > /dev/null 2>&1
+
+    # Remove existing SSH configuration
+    rm /etc/ssh/sshd_config
+
+    # Add new SSH configuration file with custom parameters
+    cp sshd_config /etc/ssh/ && chmod 644 /etc/ssh/sshd_config
+
+    # Remove the old motd file and create a new empty one
+    rm /etc/motd && touch /etc/motd
+
+    # Adjust root .ssh folder permissions to ensure security
+    chmod 600 /root/.ssh
+
+    # Create root SSH key and adjust permissions of authorized keys folder
+    touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+    ssh-keygen -t rsa -b 4096 -N '' <<<$'\n' > /dev/null 2>&1
+    sed -i "s/@debian$/@$HOSTNAME/" /root/.ssh/id_rsa.pub
+
+    # Create SSH key for specified user and adjust permissions of .ssh folder
+    su - "$TARGET_USER" -c "echo | ssh-keygen -t rsa -b 4096 -N '' <<<$'\n'" > /dev/null 2>&1
+    su - "$TARGET_USER" -c "sed -i 's/@debian$/@$HOSTNAME/' /home/"$TARGET_USER"/.ssh/id_rsa.pub"
+    chmod 700 /home/"$TARGET_USER"/.ssh
+
+    # Create the user's authorized_keys file and adjust permissions
+    su - "$TARGET_USER" -c "echo | touch /home/"$TARGET_USER"/.ssh/authorized_keys"
+    chmod 600 /home/"$TARGET_USER"/.ssh/authorized_keys
+}
+
+spawn() {
+    printf "\e[32m*\e[0m CONFIGURING SPAWN SERVICE\n"
+
+    # Copy the necessary files to the service directory
+    cp -r spawn /etc/ && chmod 700 -R /etc/spawn/*.sh
+    ln -s /etc/spawn/CT/spawn.sh /home/"$TARGET_USER"/.spawn
+    ln -s /etc/spawn/CT/spawn.sh /root/.spawn && chown sysop:sysop /root/.spawn
 }
 
 grub() {
-    printf "\e[32m*\e[0m CONFIGURING GRUB\n"
-    cat > /etc/default/grub <<-EOF
-	GRUB_DEFAULT=0
-	GRUB_TIMEOUT=0
-	GRUB_DISTRIBUTOR=\`lsb_release -i -s 2> /dev/null || echo Debian\`
-	GRUB_CMDLINE_LINUX_DEFAULT=""
-	GRUB_CMDLINE_LINUX=""
-	EOF
-    update-grub >/dev/null 2>&1
+    printf "\e[32m*\e[0m SETTING UP GRUB\n"
+
+    # Remove the current GRUB configuration file (if it exists)
+    rm -f /etc/default/grub
+
+    # Create a new GRUB configuration file with custom parameters
+    printf 'GRUB_DEFAULT=0
+GRUB_TIMEOUT=0
+GRUB_DISTRIBUTOR=`lsb_release -i -s 2> /dev/null || echo Debian`
+GRUB_CMDLINE_LINUX_DEFAULT=""
+GRUB_CMDLINE_LINUX=""' > /etc/default/grub && chmod 644 /etc/default/grub
+
+    # Update GRUB configuration
+    update-grub
+
+    # Completion message
+    if [ $? -eq 0 ]; then
+        printf "\e[32m*\e[0m GRUB CONFIGURATION UPDATED SUCCESSFULLY\n"
+    else
+        printf "\e[31m*\e[0m ERROR: FAILED TO UPDATE GRUB CONFIGURATION\n"
+    fi
 }
 
 later() {
-    printf "\e[32m*\e[0m SCHEDULING POST-REBOOT CLEANUP\n"
-    
-    # Identify initial user (UID 1000)
-    INITIAL_USER=$(grep ':1000:' /etc/passwd | cut -f1 -d:)
+    printf "\e[32m*\e[0m SCHEDULING SUBSEQUENT CONSTRUCTION PROCEDURES AFTER RESTART\n"
 
-    cat > /etc/init.d/later <<-EOF
-	#!/bin/bash
-	### BEGIN INIT INFO
-	# Provides:          later
-	# Required-Start:    \$all
-	# Required-Stop:
-	# Default-Start:     2 3 4 5
-	# Default-Stop:
-	# Short-Description: Post-reboot cleanup procedures.
-	### END INIT INFO
-	pkill -u $INITIAL_USER
-	userdel -r $INITIAL_USER
-	rm -rf /root/Spiral-UTM-main
-	update-rc.d later remove
-	rm -f /etc/init.d/later
-	EOF
-    chmod +x /etc/init.d/later
-    update-rc.d later defaults >/dev/null 2>&1
+    # Grep for UID 1000 (temp ~ user)
+    TARGET_USER=$(grep 1000 /etc/passwd | cut -f 1 -d ":")
+
+    if [[ -z "$TARGET_USER" ]]; then
+        printf "\e[33m* WARNING: No UID 1000 user found, skipping cleanup\e[0m\n"
+        return  # Exit early if no user
+    fi
+
+    # Creates the startup script that will be executed after reboot
+    printf '#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          later
+# Required-Start:    $all
+# Required-Stop:     
+# Default-Start:     2 3 4 5
+# Default-Stop:      
+# Short-Description: Procedures subsequent to instance construction only possible after reboot
+### END INIT INFO
+
+# End all processes for user %s
+pkill -u %s
+
+# Remove the user %s and its home directory
+userdel -r %s
+
+# Remove the WS folder from the /root directory
+rm -rf /root/Spiral-SRV-main
+
+# Remove the init.d script after it is executed
+rm -f /etc/init.d/later' "$TARGET_USER" "$TARGET_USER" "$TARGET_USER" "$TARGET_USER" > /etc/init.d/later && chmod +x /etc/init.d/later
+
+    # Add the script to the services that will start at boot
+    update-rc.d later defaults
 }
 
 finish() {
+    # Remove unused packages and unnecessary dependencies
     apt-get -y autoremove > /dev/null 2>&1
-    rm -f /etc/network/interfaces
-    systemctl disable networking --quiet
+
+    # Remove default network configuration file to avoid conflicts, with warning if not found
+    if [[ ! -f /etc/network/interfaces ]]; then
+        printf "\e[33m* WARNING: /etc/network/interfaces does not exist, skipping removal\e[0m\n"
+    else
+        rm -f /etc/network/interfaces
+    fi
 
     printf "\e[32m*\e[0m INSTALLATION COMPLETED SUCCESSFULLY!\n"
-    printf "  - Connect to port: \e[32m%s\e[0m\n" "$LAN0"
-    printf "  - Set IP to: \e[32m169.254.0.2/30\e[0m\n"
-    printf "  - Access via: \e[32mssh -p 444 sysop@169.254.0.1\e[0m\n"
 
     read -p "DO YOU WANT TO RESTART? (Y/N): " response
     response=${response^^}
@@ -484,18 +647,18 @@ finish() {
 main() {
     update
     interface
-    domain
-    global_settings
     hostname
     target_user
     passwords
     packages
     directories
-    ssh
-    network_services
-    network_script
-    firewall
     trigger
+    network
+    firewall
+    mount
+    hypervisor
+    ssh
+    spawn
     grub
     later
     finish
