@@ -256,8 +256,18 @@ ssh() {
     systemctl disable ssh --quiet
 }
 
-network_services() {
-    printf "\e[32m*\e[0m CONFIGURING NETWORK SERVICES\n"
+network() {
+    printf "\e[32m*\e[0m SETTING UP NETWORK\n"
+
+    # Adding Network Configuration File
+    cp systemd/scripts/network.sh /root/.services/ && chmod 700 /root/.services/network.sh
+
+    # Disabling services (with full error suppression)
+    systemctl disable networking --quiet 2>/dev/null || true
+    systemctl disable ModemManager --quiet 2>/dev/null || true
+    systemctl disable wpa_supplicant --quiet 2>/dev/null || true
+    systemctl disable NetworkManager-wait-online --quiet 2>/dev/null || true
+    systemctl disable NetworkManager.service --quiet 2>/dev/null || true
 
     dhcp() {
         printf "  - Configuring DHCP (KEA)\n"
@@ -361,23 +371,6 @@ network_services() {
     dhcp
     ntp
     dns
-}
-
-network_script() {
-    printf "\e[32m*\e[0m SETTING UP DYNAMIC NETWORK SCRIPT\n"
-    SOURCE="$DEP_DIR/systemd/scripts/network.sh"
-    DEST="/root/.services/network.sh"
-
-    if [[ ! -f "$SOURCE" ]]; then
-        printf "\e[31m*\e[0m ERROR: network.sh NOT FOUND.\n"
-        exit 1
-    fi
-    
-    cp "$SOURCE" "$DEST"
-    chmod 700 "$DEST"
-    
-    # Note: IP injection removed because WAN variables are no longer collected.
-    # The script now only copies the file.
 }
 
 firewall() {
