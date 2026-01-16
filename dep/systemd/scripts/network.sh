@@ -7,7 +7,7 @@ set -e
 #WAN1=""
 #LAN0=""
 
-DHCP_MAX_RETRIES=5
+DHCP_MAX_RETRIES=50
 DHCP_WAIT_TIME=5
 
 # Physical interfaces
@@ -26,7 +26,6 @@ interfaces() {
 
     # Call
     wan0
-    #wan1
     lan0
 }
 
@@ -37,7 +36,6 @@ main_gw() {
         # Primary
         brctl addbr gw854807
         brctl stp gw854807 on
-        #brctl addif gw854807 "$WAN0"
         ip link set dev gw854807 up
     }
 
@@ -46,55 +44,78 @@ main_gw() {
         # Secondary
         brctl addbr gw965918
         brctl stp gw965918 on
-        #brctl addif gw965918 "$WAN1"
         ip link set dev gw965918 up
     }
 
-    dhcp() {
+dhcp() {
+        # 1. Inicializa as bridges
         gw854807
         gw965918
 
+        # 2. Binding das Interfaces Físicas
+        echo "[BRIDGE] A verificar interfaces físicas..."
+
+        if [[ -n "$WAN0" ]]; then
+            echo "[BRIDGE] A associar física $WAN0 à bridge gw854807..."
+            brctl addif gw854807 "$WAN0"
+        fi
+
+        if [[ -n "$WAN1" ]]; then
+            echo "[BRIDGE] A associar física $WAN1 à bridge gw965918..."
+            brctl addif gw965918 "$WAN1"
+        fi
+
         echo "[DHCP] A solicitar endereços IP (WAN0=Pri, WAN1=Sec)..."
 
-        # Executa em background (-b) para não bloquear o script
+        # 3. Executa DHCP em background
         dhcpcd -4 -b -m 10 gw854807
         dhcpcd -4 -b -m 100 gw965918
 
-        # Loop de Verificação (5 tentativas)
+        # 4. Loop de Verificação
         local count=1
         local success=0
 
         while [ $count -le $DHCP_MAX_RETRIES ]; do
             echo "[WAIT] Tentativa $count de $DHCP_MAX_RETRIES... A verificar IPs..."
 
-            # Verifica se obteve IP (filtra saída do ip addr)
-            ip_wan0=$(ip -4 addr show gw854807 | grep "inet " | awk '{print $2}')
-            ip_wan1=$(ip -4 addr show gw965918 | grep "inet " | awk '{print $2}')
+            # Verifica IPs ignorando 169.254 (APIPA)
+            ip_wan0=$(ip -4 addr show gw854807 | grep "inet " | grep -v "169.254" | awk '{print $2}')
+            ip_wan1=$(ip -4 addr show gw965918 | grep "inet " | grep -v "169.254" | awk '{print $2}')
 
-            # Se pelo menos UMA interface tiver IP, entra no bloco de sucesso
             if [[ -n "$ip_wan0" ]] || [[ -n "$ip_wan1" ]]; then
                 echo "[OK] Conectividade estabelecida!"
+                
+                # Variável temporária para guardar qual interface física venceu
+                local PHYSICAL_IFACE=""
 
-                # --- CORREÇÃO LÓGICA DE PREFERÊNCIA ---
-                # Verifica PRIMEIRO se a WAN0 (gw854807) tem IP. 
-                # Se tiver, ela é a ativa (mesmo que a WAN1 também tenha).
+                # --- LÓGICA DE DECISÃO ---
                 if [[ -n "$ip_wan0" ]]; then
+                    # Cenário 1: WAN0 (gw854807) tem IP (Preferida)
                     ACTIVE_IFACE="gw854807"
-                    # Exibe info da WAN0
-                    echo " -> gw854807 (WAN0): $ip_wan0 [PREFERIDA - ATIVA]"
-                    # Se a WAN1 também estiver ativa, apenas avisa, mas não muda a ACTIVE_IFACE
+                    PHYSICAL_IFACE="$WAN0" # A física associada é a WAN0
+                    
+                    echo " -> $ACTIVE_IFACE (Física: $PHYSICAL_IFACE): $ip_wan0 [PREFERIDA - ATIVA]"
+                    
                     if [[ -n "$ip_wan1" ]]; then
                         echo " -> gw965918 (WAN1): $ip_wan1 [ONLINE - STANDBY]"
                     fi
+
                 else
-                    # Se caiu aqui, WAN0 está OFF e WAN1 está ON
+                    # Cenário 2: Apenas WAN1 (gw965918) tem IP
                     ACTIVE_IFACE="gw965918"
-                    echo " -> gw854807 (WAN0): OFFLINE"
-                    echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA - ATIVA]"
+                    PHYSICAL_IFACE="$WAN1" # A física associada é a WAN1
+                    
+                    echo " -> gw854807 (WAN0): OFFLINE/INVALID"
+                    echo " -> $ACTIVE_IFACE (Física: $PHYSICAL_IFACE): $ip_wan1 [SECUNDÁRIA - ATIVA]"
                 fi
 
-                # Captura o Altname da interface VENCEDORA
-                ALTNAME=$(ip addr show "$ACTIVE_IFACE" | awk '/altname/ {print $2; exit}')
+                # --- CAPTURA DO ALTNAME DA FÍSICA ---
+                # Agora buscamos o altname na interface física identificada (ex: enp1s0)
+                if [[ -n "$PHYSICAL_IFACE" ]]; then
+                    ALTNAME=$(ip link show dev "$PHYSICAL_IFACE" | awk '/altname/ {print $2; exit}')
+                else
+                    ALTNAME=""
+                fi
                 
                 success=1
                 break
@@ -104,22 +125,20 @@ main_gw() {
             ((count++))
         done
 
-        # Morte Súbita: Encerra se ambas falharem após 5 tentativas
         if [ $success -eq 0 ]; then
-            echo "[CRITICAL] Falha total: Nenhuma interface obteve endereço IP."
+            echo "[CRITICAL] Falha total: Nenhuma interface obteve endereço IP válido."
             echo "[STOP] A abortar o script."
             exit 1
         fi
 
-        # Vincula a interface ao UTM como primária
-        # Remove qualquer definição anterior para evitar duplicidade
+        # Grava variáveis no /etc/environment
         sed -i '/^ACTIVE_IFACE=/d' /etc/environment
-        echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
-        
         sed -i '/^ACTIVE_ALTNAME=/d' /etc/environment
+        
+        echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
         echo "ACTIVE_ALTNAME=$ALTNAME" >> /etc/environment
 
-        echo "[INFO] Rede configurada. Interface ativa: $ACTIVE_IFACE ($ALTNAME). A continuar..."
+        echo "[INFO] Rede configurada. Interface ativa: $ACTIVE_IFACE (Física: $PHYSICAL_IFACE / Alt: $ALTNAME). A continuar..."
     }
 
     # DNS, NTP, etc services of the real host
