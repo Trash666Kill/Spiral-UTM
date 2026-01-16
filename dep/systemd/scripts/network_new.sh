@@ -76,9 +76,11 @@ main_gw() {
             if [[ -n "$ip_wan0" ]] || [[ -n "$ip_wan1" ]]; then
                 echo "[OK] Conectividade estabelecida!"
                 if [[ -n "$ip_wan0" ]]; then
+                    ACTIVE_IFACE="gw854807"
                     echo " -> gw854807 (WAN0): $ip_wan0 [PREFERIDA - ATIVA]"
                 fi
                 if [[ -n "$ip_wan1" ]]; then
+                    ACTIVE_IFACE="gw965918"
                     echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA]"
                 fi
                 success=1
