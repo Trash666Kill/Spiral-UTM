@@ -1,21 +1,23 @@
 #!/bin/bash
 
-# - Description: Configures network interfaces and gateways for a UTM environment.
-# - Sets up physical interfaces (WAN/LAN), main gateways (Trunk, DNS/NTP, SSH/SNMP),
-# - and subsidiary VLANs (Switch, Server, VM, Container, Workstation, DMZ).
-# - Exits with an error if any configuration fails.
-# - To add new gateways or VLANs, copy and edit functions like gw854807 or vlan76.
-
 # Close on any error
 set -e
 
 #WAN0=""
+#WAN1=""
 #LAN0=""
+
+DHCP_MAX_RETRIES=5
+DHCP_WAIT_TIME=5
 
 # Physical interfaces
 interfaces() {
     wan0() {
         ip link set dev "$WAN0" up
+    }
+
+    wan1() {
+        ip link set dev "$WAN1" up
     }
 
     lan0() {
@@ -24,6 +26,7 @@ interfaces() {
 
     # Call
     wan0
+    wan1
     lan0
 }
 
@@ -36,8 +39,87 @@ main_gw() {
         brctl stp gw854807 on
         brctl addif gw854807 "$WAN0"
         ip link set dev gw854807 up
-        ip addr add 0.0.0.0/24 dev gw854807
-        ip route add default via 0.0.0.0 dev gw854807
+    }
+
+    # Trunk/WAN1
+    gw965918() {
+        # Secondary
+        brctl addbr gw965918
+        brctl stp gw965918 on
+        brctl addif gw965918 "$WAN1"
+        ip link set dev gw965918 up
+    }
+
+    dhcp() {
+        gw854807
+        gw965918
+
+        echo "[DHCP] A solicitar endereços IP (WAN0=Pri, WAN1=Sec)..."
+
+        # Executa em background (-b) para não bloquear o script
+        dhcpcd -4 -b -m 10 gw854807
+        dhcpcd -4 -b -m 100 gw965918
+
+        # Loop de Verificação (5 tentativas)
+        local count=1
+        local success=0
+
+        while [ $count -le $DHCP_MAX_RETRIES ]; do
+            echo "[WAIT] Tentativa $count de $DHCP_MAX_RETRIES... A verificar IPs..."
+
+            # Verifica se obteve IP (filtra saída do ip addr)
+            ip_wan0=$(ip -4 addr show gw854807 | grep "inet " | awk '{print $2}')
+            ip_wan1=$(ip -4 addr show gw965918 | grep "inet " | awk '{print $2}')
+
+            # Se pelo menos UMA interface tiver IP, entra no bloco de sucesso
+            if [[ -n "$ip_wan0" ]] || [[ -n "$ip_wan1" ]]; then
+                echo "[OK] Conectividade estabelecida!"
+
+                # --- CORREÇÃO LÓGICA DE PREFERÊNCIA ---
+                # Verifica PRIMEIRO se a WAN0 (gw854807) tem IP. 
+                # Se tiver, ela é a ativa (mesmo que a WAN1 também tenha).
+                if [[ -n "$ip_wan0" ]]; then
+                    ACTIVE_IFACE="gw854807"
+                    # Exibe info da WAN0
+                    echo " -> gw854807 (WAN0): $ip_wan0 [PREFERIDA - ATIVA]"
+                    # Se a WAN1 também estiver ativa, apenas avisa, mas não muda a ACTIVE_IFACE
+                    if [[ -n "$ip_wan1" ]]; then
+                        echo " -> gw965918 (WAN1): $ip_wan1 [ONLINE - STANDBY]"
+                    fi
+                else
+                    # Se caiu aqui, WAN0 está OFF e WAN1 está ON
+                    ACTIVE_IFACE="gw965918"
+                    echo " -> gw854807 (WAN0): OFFLINE"
+                    echo " -> gw965918 (WAN1): $ip_wan1 [SECUNDÁRIA - ATIVA]"
+                fi
+
+                # Captura o Altname da interface VENCEDORA
+                ALTNAME=$(ip addr show "$ACTIVE_IFACE" | awk '/altname/ {print $2; exit}')
+                
+                success=1
+                break
+            fi
+
+            sleep $DHCP_WAIT_TIME
+            ((count++))
+        done
+
+        # Morte Súbita: Encerra se ambas falharem após 5 tentativas
+        if [ $success -eq 0 ]; then
+            echo "[CRITICAL] Falha total: Nenhuma interface obteve endereço IP."
+            echo "[STOP] A abortar o script."
+            exit 1
+        fi
+
+        # Vincula a interface ao UTM como primária
+        # Remove qualquer definição anterior para evitar duplicidade
+        sed -i '/^ACTIVE_IFACE=/d' /etc/environment
+        echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
+        
+        sed -i '/^ACTIVE_ALTNAME=/d' /etc/environment
+        echo "ACTIVE_ALTNAME=$ALTNAME" >> /etc/environment
+
+        echo "[INFO] Rede configurada. Interface ativa: $ACTIVE_IFACE ($ALTNAME). A continuar..."
     }
 
     # DNS, NTP, etc services of the real host
@@ -57,9 +139,9 @@ main_gw() {
     }
 
     # Call
-    gw854807
-    tap16
     gw471042
+    tap16
+    dhcp
 }
 
 # Subsidiary gateways according to the needs of the environment
@@ -139,3 +221,7 @@ main() {
 
 # Execute main function
 main
+
+
+
+
