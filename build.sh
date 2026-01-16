@@ -27,9 +27,6 @@ interface() {
     # Variables for WAN selection
     WAN0=""
     BEST_LATENCY=9999.0
-    WAN0_IPV4=""
-    WAN0_MASK=""
-    WAN0_GATEWAY=""
 
     # Iterate over active interfaces to find WAN (Internet)
     for IFACE in $(ip -o link show | awk -F': ' '/state UP/ && ($2 ~ /^(eth|en|enp)/) {sub(/@.*/, "", $2); print $2}'); do
@@ -38,11 +35,6 @@ interface() {
         if [[ -n "$LATENCY" && $(echo "$LATENCY < $BEST_LATENCY" | bc -l) -eq 1 ]]; then
             BEST_LATENCY="$LATENCY"
             WAN0="$IFACE"
-            
-            IP_INFO=$(ip -4 addr show "$IFACE" | grep 'inet' | awk '{print $2}')
-            WAN0_IPV4=$(echo "$IP_INFO" | cut -d'/' -f1)
-            WAN0_MASK=$(echo "$IP_INFO" | cut -d'/' -f2)
-            WAN0_GATEWAY=$(ip route | grep default | grep "dev $WAN0" | awk '{print $3}')
         fi
     done
 
@@ -77,6 +69,7 @@ interface() {
     sed -i '/^WAN0=/d' /etc/environment
     sed -i '/^LAN0=/d' /etc/environment
     
+    # Writing ONLY the interface name as requested
     echo "WAN0=$WAN0" >> /etc/environment
     if [[ -n "${LAN0-}" ]]; then
       echo "LAN0=$LAN0" >> /etc/environment
