@@ -3,6 +3,8 @@
 # Close on any error
 set -e
 
+#ACTIVE_IFACE=""
+
 # Configure SSH access for host (UTM)
 host() {
     ssh() {
