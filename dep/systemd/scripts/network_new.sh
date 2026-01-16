@@ -97,6 +97,8 @@ main_gw() {
             echo "[STOP] A abortar o script."
             exit 1
         fi
+
+        # Vincula a interface ao UTM como primária
         sed -i '/^ACTIVE_IFACE=/d' /etc/environment
         echo "ACTIVE_IFACE=$ACTIVE_IFACE" >> /etc/environment
 
