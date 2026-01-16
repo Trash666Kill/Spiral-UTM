@@ -485,8 +485,7 @@ main() {
     packages
     directories
     ssh
-    network_services
-    network_script
+    network
     firewall
     trigger
     grub
