@@ -150,9 +150,9 @@ established_related() {
 
 # Configure host-specific rules
 host() {
-    # Host-specific Rules
+    echo "Configuring host rules..."
+    # Filter Rules
     loopback() {
-        # Filter Rules
         nft add rule inet firelux input iif "lo" accept
         nft add rule inet firelux output oif "lo" accept
     }
@@ -163,43 +163,39 @@ host() {
         nft add rule inet firelux output icmp type { echo-request, echo-reply, destination-unreachable, time-exceeded } accept
     }
 
+    # Filter Rules
     dns() {
-        # Filter Rules
+        # Allow DNS output (Required for IDS/DNS Manager to fetch lists)
         nft add rule inet firelux output udp dport 53 accept
-        nft add rule inet firelux input udp dport 53 accept
-        nft add rule inet firelux output udp sport 53 accept
-        nft add rule inet firelux output tcp dport {53, 853} accept
-        nft add rule inet firelux input tcp dport {53, 853} accept
-        nft add rule inet firelux output tcp sport {53, 853} accept
+        nft add rule inet firelux output tcp dport 53 accept
     }
 
-    dhcp() {
-        # Filter Rules
-        nft add rule inet firelux input udp dport 67 accept
-        nft add rule inet firelux output udp sport 67 accept
-        nft add rule inet firelux output udp dport 68 accept
-    }
-
+    # Filter Rules
     ntp() {
-        # Filter Rules
         nft add rule inet firelux output udp dport 123 accept
-        nft add rule inet firelux input udp dport 123 accept
-        nft add rule inet firelux output udp sport 123 accept
     }
 
+    # Filter Rules
     web() {
-        # Filter Rules
+        # Allow HTTP/HTTPS output (Required for IDS/DNS Manager to fetch lists)
         nft add rule inet firelux output tcp dport 80 accept
         nft add rule inet firelux output tcp dport 443 accept
+    }
+
+   # Azure WireServer
+    azure_wireserver() {
+        nft add rule inet firelux output ip daddr 168.63.129.16 tcp dport 32526 counter accept
+        nft add rule inet firelux output ip daddr 168.63.129.16 tcp dport 80 counter accept
+        nft add rule inet firelux output ip daddr 168.63.129.16 tcp dport 443 counter accept
     }
 
     # Call Child Functions
     loopback
     icmp
     dns
-    dhcp
     ntp
     web
+    azure_wireserver
 }
 
 # LOGGING (CPU PROTECTION) Logs packets that survived all drops above and hit the default policy.
@@ -236,8 +232,9 @@ main() {
     for RULE in $RULES
     do
         $RULE
-        sleep 1
     done
+    
+    echo "Firewall applied successfully."
 }
 
 # Execute main function
