@@ -14,6 +14,7 @@ from datetime import datetime
 # ================= CONFIGURATION =================
 NAMED_CONF_LOCAL = "/etc/bind/named.conf.local"
 NAMED_CONF_OPTIONS = "/etc/bind/named.conf.options"
+RNDC_KEY_FILE = "/etc/bind/rndc.key"
 KEYS_DIR = "/etc/bind/keys"
 BIND_USER = "bind"
 BIND_GROUP = "bind"
@@ -26,7 +27,7 @@ def check_root():
         sys.exit(1)
 
 def get_bind_uid_gid():
-    """Retrieves the UID and GID for the bind user to set file permissions."""
+    """Retrieves the UID and GID for the bind user."""
     try:
         uid = pwd.getpwnam(BIND_USER).pw_uid
         gid = grp.getgrnam(BIND_GROUP).gr_gid
@@ -36,9 +37,30 @@ def get_bind_uid_gid():
         sys.exit(1)
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description='BIND9 DNSSEC, Records, and Forwarders Manager')
+    # Custom help description with Examples
+    epilog_text = """EXAMPLES:
+  1. List current forwarders:
+     ./handler.py --list-fwd
+
+  2. Set new forwarders (Use commas, NO spaces or slashes):
+     ./handler.py --set-fwd "1.1.1.1,8.8.8.8"
+
+  3. Add a new A record:
+     ./handler.py --record "srv01,192.168.1.10,File Server"
+
+  4. List zone records:
+     ./handler.py --list
+
+  5. Force key rotation (Maintenance):
+     ./handler.py --rotate-keys
+    """
     
-    # Mutually exclusive actions (cannot list and set at the same time)
+    parser = argparse.ArgumentParser(
+        description='BIND9 DNSSEC, Records, and Forwarders Manager',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=epilog_text
+    )
+    
     group = parser.add_mutually_exclusive_group()
     
     # Zone Actions
@@ -51,28 +73,92 @@ def parse_arguments():
     group.add_argument('--list-fwd', action='store_true',
                         help='List currently configured DNS forwarders.')
     group.add_argument('--set-fwd', type=str,
-                        help='Set new DNS forwarders (replaces existing). Format: "IP1,IP2"')
+                        help='Set new DNS forwarders. Format: "IP1,IP2"')
 
-    # Record Management (Can be combined with default run)
+    # Record Management
     parser.add_argument('--record', action='append', 
                         help='Add or Update an A record. Format: "HOSTNAME,IP,COMMENT"')
     
     return parser.parse_args()
 
-def reload_service():
-    """Reloads BIND9 using rndc if active, or starts it using systemctl if stopped."""
-    if subprocess.run(["systemctl", "is-active", "--quiet", "named"]).returncode == 0:
-        print("Reloading BIND9 configuration (rndc reload)...")
+def fix_rndc_configuration():
+    """Ensures RNDC key exists and has correct permissions."""
+    bind_uid, bind_gid = get_bind_uid_gid()
+    
+    # 1. Generate key if missing
+    if not os.path.exists(RNDC_KEY_FILE):
+        print("Notice: RNDC key missing. Generating new key...")
         try:
-            subprocess.run(["rndc", "reload"], check=True)
-        except subprocess.CalledProcessError:
-            print("Warning: 'rndc reload' failed. Attempting 'systemctl reload named'...")
-            subprocess.run(["systemctl", "reload", "named"], check=False)
-    else:
+            subprocess.run(["rndc-confgen", "-a", "-f", RNDC_KEY_FILE], 
+                         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        except subprocess.CalledProcessError as e:
+            print(f"Error generating RNDC key: {e.stderr.decode()}")
+            # Continue anyway, let the reload logic handle failure
+    
+    # 2. Fix Permissions (Always run this to ensure consistency)
+    if os.path.exists(RNDC_KEY_FILE):
+        try:
+            os.chown(RNDC_KEY_FILE, bind_uid, bind_gid)
+            os.chmod(RNDC_KEY_FILE, 0o640)
+        except OSError as e:
+            print(f"Warning: Could not set permissions on {RNDC_KEY_FILE}: {e}")
+
+def reload_service():
+    """Reloads BIND9. Checks RNDC health first, falls back to Restart if needed."""
+    
+    # Step 0: Ensure RNDC is healthy before trying anything
+    fix_rndc_configuration()
+
+    # Check if service is actually running
+    is_active = subprocess.run(["systemctl", "is-active", "--quiet", "named"]).returncode == 0
+
+    if not is_active:
         print("Service is stopped. Starting BIND9...")
         subprocess.run(["systemctl", "enable", "--now", "named"], check=False)
+        return
+
+    print("Reloading BIND9 configuration...")
+    
+    # Attempt 1: RNDC (Fastest/Standard way)
+    try:
+        # Check status first to see if RNDC is talking to the daemon
+        subprocess.run(["rndc", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # If status ok, reload
+        subprocess.run(["rndc", "reload"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        print("Success: Configuration reloaded via rndc.")
+        return
+    except subprocess.CalledProcessError:
+        print("Warning: 'rndc' communication failed (timeout/key mismatch).")
+
+    # Attempt 2: Systemctl Reload (Alternative way)
+    print("Attempting 'systemctl reload named'...")
+    reload_result = subprocess.run(["systemctl", "reload", "named"], check=False)
+    
+    if reload_result.returncode == 0:
+        print("Success: Configuration reloaded via systemctl.")
+    else:
+        # Attempt 3: Hard Restart (Fixes stuck services/broken pipes)
+        print("CRITICAL: Reload failed. Forcing service RESTART to apply changes...")
+        subprocess.run(["systemctl", "restart", "named"], check=False)
+        print("Service restarted.")
 
 # ================= FORWARDERS LOGIC =================
+
+def validate_ip_format(ip_string):
+    """Validates the forwarder input string."""
+    if '/' in ip_string:
+        print(f"Error: Invalid character '/' detected in '{ip_string}'.")
+        print("Hint: Use commas to separate IPs. Example: \"8.8.8.8,1.1.1.1\"")
+        return False
+    
+    parts = ip_string.split(',')
+    for part in parts:
+        clean_part = part.strip()
+        if not clean_part: continue
+        if not re.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", clean_part):
+            print(f"Error: '{clean_part}' does not look like a valid IP address.")
+            return False
+    return True
 
 def manage_forwarders(action, new_ips_str=None):
     if not os.path.isfile(NAMED_CONF_OPTIONS):
@@ -82,7 +168,6 @@ def manage_forwarders(action, new_ips_str=None):
     with open(NAMED_CONF_OPTIONS, 'r') as f:
         content = f.read()
 
-    # Regex to find the forwarders block: forwarders { ... };
     regex_fwd = re.compile(r'(forwarders\s*\{)([^}]+)(\};)', re.DOTALL)
     match = regex_fwd.search(content)
 
@@ -90,7 +175,6 @@ def manage_forwarders(action, new_ips_str=None):
         print(f"{'CURRENT FORWARDERS':<20}")
         print("-" * 30)
         if match:
-            # Clean string: remove semicolons, newlines, and extra spaces
             raw_ips = match.group(2).replace(';', ' ').replace('\n', ' ')
             ips = [ip for ip in raw_ips.split() if ip.strip()]
             for ip in ips:
@@ -102,30 +186,26 @@ def manage_forwarders(action, new_ips_str=None):
     elif action == 'set':
         if not match:
             print("Error: 'forwarders { ... };' block not found in named.conf.options.")
-            print("This script modifies existing configurations but does not create the structure from scratch.")
             sys.exit(1)
         
-        # Process input list
+        if not validate_ip_format(new_ips_str):
+            sys.exit(1)
+        
         ip_list = [ip.strip() for ip in new_ips_str.split(',') if ip.strip()]
         if not ip_list:
             print("Error: No valid IPs provided.")
             sys.exit(1)
 
-        # Format new content: " 1.1.1.1; 8.8.8.8; "
         new_inner_content = " " + "; ".join(ip_list) + "; "
-        
-        # Substitute in original content
         new_content = regex_fwd.sub(r'\1' + new_inner_content + r'\3', content)
 
-        # Backup before writing
         shutil.copy(NAMED_CONF_OPTIONS, NAMED_CONF_OPTIONS + ".bak")
         
         with open(NAMED_CONF_OPTIONS, 'w') as f:
             f.write(new_content)
         
-        print(f"Forwarders updated to: {', '.join(ip_list)}")
+        print(f"Forwarders configuration updated to: {', '.join(ip_list)}")
         
-        # Validate syntax before reloading
         check = subprocess.run(["named-checkconf", NAMED_CONF_OPTIONS], capture_output=True)
         if check.returncode != 0:
             print("CRITICAL ERROR: The new configuration is invalid.")
@@ -139,7 +219,6 @@ def manage_forwarders(action, new_ips_str=None):
 # ================= ZONE & DNSSEC LOGIC =================
 
 def extract_zone_info():
-    """Parses named.conf.local to find the domain name and zone file path."""
     if not os.path.isfile(NAMED_CONF_LOCAL):
         print(f"Error: {NAMED_CONF_LOCAL} not found.")
         sys.exit(1)
@@ -150,7 +229,6 @@ def extract_zone_info():
         file_match = re.search(r'file\s+"([^"]+)"', content)
         
         if domain_match and file_match:
-            # Assumes the file in config points to the .signed version
             zone_file = file_match.group(1).replace(".signed", "")
             return domain_match.group(1).lower(), zone_file
             
@@ -171,7 +249,6 @@ def list_zone_records(zone_file_path):
         for line in f:
             match = regex_record.match(line)
             if match:
-                # Clean up comment (remove leading ; and spaces)
                 comm = match.group(3).replace(';', '').strip() if match.group(3) else ""
                 print(f"{match.group(1):<15} {match.group(2):<18} {comm}")
                 count += 1
@@ -193,8 +270,7 @@ def main():
         manage_forwarders('set', args.set_fwd)
         sys.exit(0)
 
-    # --- FLOW 2: Zone & DNSSEC Management ---
-    
+    # --- FLOW 2: Zone Management ---
     domain, zone_file_path = extract_zone_info()
 
     if args.list:
@@ -202,7 +278,6 @@ def main():
         list_zone_records(zone_file_path)
         sys.exit(0)
 
-    # Prepare user records if provided
     user_records = []
     if args.record:
         for item in args.record:
@@ -210,7 +285,6 @@ def main():
             if len(parts) < 3:
                 print(f"Error: Invalid record format '{item}'. Must be: HOSTNAME,IP,COMMENT")
                 sys.exit(1)
-            # Rejoin comments in case they contain commas
             user_records.append({
                 'host': parts[0].strip(), 
                 'ip': parts[1].strip(), 
@@ -219,16 +293,13 @@ def main():
 
     print(f"Managing zone: {domain}")
 
-    # 1. Key Management
     if not os.path.exists(KEYS_DIR):
         os.makedirs(KEYS_DIR)
         os.chown(KEYS_DIR, bind_uid, bind_gid)
         os.chmod(KEYS_DIR, 0o750)
 
-    # Check existing keys
     existing_keys = glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key"))
     
-    # Generate keys if missing OR if rotation is requested
     if args.rotate_keys or len(existing_keys) < 2:
         if args.rotate_keys:
             print("Rotation requested. Removing old keys...")
@@ -238,46 +309,38 @@ def main():
             print("Keys missing. Generating new DNSSEC key pair...")
 
         os.chdir(KEYS_DIR)
-        # Generate ZSK and KSK
         subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", domain], stdout=subprocess.DEVNULL)
         subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", "-f", "KSK", domain], stdout=subprocess.DEVNULL)
         
-        # Fix permissions
         for f in os.listdir(KEYS_DIR):
             os.chown(os.path.join(KEYS_DIR, f), bind_uid, bind_gid)
             if f.endswith(".private"): os.chmod(os.path.join(KEYS_DIR, f), 0o600)
             else: os.chmod(os.path.join(KEYS_DIR, f), 0o644)
 
-    # Identify current keys (Last modified assumed to be the active ones)
     key_files = sorted(glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key")), key=os.path.getmtime)
-    if len(key_files) < 2:
-        print("Critical Error: Keys were not generated correctly.")
+    if not key_files:
+        print("Error: DNSSEC keys generation failed.")
         sys.exit(1)
+        
+    zsk_key = os.path.basename(key_files[0])
+    ksk_key = os.path.basename(key_files[-1])
 
-    zsk_key = os.path.basename(key_files[0]) # Assuming older one is ZSK (or doesn't matter if created same time)
-    ksk_key = os.path.basename(key_files[-1]) # Assuming newer/last one is KSK
-
-    # 2. Zone File Processing (Read -> Update Records -> Update Serial -> Write)
     if not os.path.isfile(zone_file_path):
-        print(f"Error: Base zone file {zone_file_path} not found.")
+        print(f"Error: Zone file {zone_file_path} not found.")
         sys.exit(1)
 
     with open(zone_file_path, 'r') as f:
         lines = f.readlines()
 
-    # Step A: Update/Append Records
     updated_lines = []
     processed_hosts = set()
     regex_rec = re.compile(r'^(\S+)\s+IN\s+A\s+(\S+)\s*(;.*)?$')
 
-    # Update existing lines
     for line in lines:
         match = regex_rec.match(line)
         if match:
             current_host = match.group(1)
-            # Check if this host needs updating
             update_data = next((r for r in user_records if r['host'] == current_host), None)
-            
             if update_data:
                 print(f"  [UPDATING] {current_host}: {update_data['ip']}")
                 new_line = f"{current_host:<8} IN      A       {update_data['ip']:<15} ; {update_data['comment']}\n"
@@ -288,13 +351,10 @@ def main():
         else:
             updated_lines.append(line)
 
-    # Append new records
     for record in user_records:
         if record['host'] not in processed_hosts:
             print(f"  [CREATING] {record['host']}: {record['ip']}")
             new_line = f"{record['host']:<8} IN      A       {record['ip']:<15} ; {record['comment']}\n"
-            
-            # Insert before DNSSEC includes if possible
             inserted = False
             for i, line in enumerate(updated_lines):
                  if '$INCLUDE' in line or '; Include DNSSEC keys' in line:
@@ -304,33 +364,26 @@ def main():
             if not inserted:
                 updated_lines.append(new_line)
 
-    # Step B: Update Serial and Clean Includes
     final_lines = []
     serial_updated = False
-    # Serial format: YYYYMMDDHH
     date_serial = int(datetime.utcnow().strftime('%Y%m%d%H'))
 
     for line in updated_lines:
-        # Remove old key includes to prevent duplication
         if '$INCLUDE' in line and '.key' in line: continue
         if '; Include DNSSEC keys' in line: continue
         
-        # Increment Serial
         serial_match = re.search(r'(\d+)\s*;\s*Serial', line, re.IGNORECASE)
         if serial_match and not serial_updated:
             current_serial = int(serial_match.group(1))
             new_serial = date_serial
-            # Ensure serial always increments
             if new_serial <= current_serial:
                 new_serial = current_serial + 1
-            
             line = re.sub(r'\d+(\s*;\s*Serial)', f'{new_serial}\\1', line, count=1)
             serial_updated = True
             print(f"Serial updated: {current_serial} -> {new_serial}")
         
         final_lines.append(line)
 
-    # Step C: Write file with Key Includes
     content = "".join(final_lines).rstrip()
     content += "\n\n; Include DNSSEC keys\n"
     content += f'$INCLUDE "{os.path.join(KEYS_DIR, zsk_key)}"\n'
@@ -342,7 +395,6 @@ def main():
     os.chown(zone_file_path, bind_uid, bind_gid)
     os.chmod(zone_file_path, 0o644)
 
-    # 3. Sign Zone
     print("Signing zone with DNSSEC...")
     salt = secrets.token_hex(4).upper()
     try:
@@ -355,13 +407,11 @@ def main():
         print(f"Error signing zone: {e.stderr.decode()}")
         sys.exit(1)
 
-    # Set permissions on signed file
     signed_file = zone_file_path + ".signed"
     if os.path.exists(signed_file):
         os.chown(signed_file, bind_uid, bind_gid)
         os.chmod(signed_file, 0o644)
 
-    # 4. Reload Service
     reload_service()
 
     print("Operation completed successfully.")
