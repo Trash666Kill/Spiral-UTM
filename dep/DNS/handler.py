@@ -37,7 +37,6 @@ def get_bind_uid_gid():
         sys.exit(1)
 
 def parse_arguments():
-    # Custom help description with Examples
     epilog_text = """EXAMPLES:
   1. List current forwarders:
      ./handler.py --list-fwd
@@ -85,7 +84,6 @@ def fix_rndc_configuration():
     """Ensures RNDC key exists and has correct permissions."""
     bind_uid, bind_gid = get_bind_uid_gid()
     
-    # 1. Generate key if missing
     if not os.path.exists(RNDC_KEY_FILE):
         print("Notice: RNDC key missing. Generating new key...")
         try:
@@ -93,9 +91,7 @@ def fix_rndc_configuration():
                          check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         except subprocess.CalledProcessError as e:
             print(f"Error generating RNDC key: {e.stderr.decode()}")
-            # Continue anyway, let the reload logic handle failure
     
-    # 2. Fix Permissions (Always run this to ensure consistency)
     if os.path.exists(RNDC_KEY_FILE):
         try:
             os.chown(RNDC_KEY_FILE, bind_uid, bind_gid)
@@ -105,11 +101,8 @@ def fix_rndc_configuration():
 
 def reload_service():
     """Reloads BIND9. Checks RNDC health first, falls back to Restart if needed."""
-    
-    # Step 0: Ensure RNDC is healthy before trying anything
     fix_rndc_configuration()
 
-    # Check if service is actually running
     is_active = subprocess.run(["systemctl", "is-active", "--quiet", "named"]).returncode == 0
 
     if not is_active:
@@ -119,25 +112,20 @@ def reload_service():
 
     print("Reloading BIND9 configuration...")
     
-    # Attempt 1: RNDC (Fastest/Standard way)
     try:
-        # Check status first to see if RNDC is talking to the daemon
         subprocess.run(["rndc", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        # If status ok, reload
         subprocess.run(["rndc", "reload"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         print("Success: Configuration reloaded via rndc.")
         return
     except subprocess.CalledProcessError:
         print("Warning: 'rndc' communication failed (timeout/key mismatch).")
 
-    # Attempt 2: Systemctl Reload (Alternative way)
     print("Attempting 'systemctl reload named'...")
     reload_result = subprocess.run(["systemctl", "reload", "named"], check=False)
     
     if reload_result.returncode == 0:
         print("Success: Configuration reloaded via systemctl.")
     else:
-        # Attempt 3: Hard Restart (Fixes stuck services/broken pipes)
         print("CRITICAL: Reload failed. Forcing service RESTART to apply changes...")
         subprocess.run(["systemctl", "restart", "named"], check=False)
         print("Service restarted.")
@@ -256,6 +244,186 @@ def list_zone_records(zone_file_path):
         print("No 'A' records found.")
     print("-" * 65)
 
+def check_keys_need_rotation(domain):
+    """Check if keys exist and if DNSSEC signatures are expired."""
+    existing_keys = glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key"))
+    
+    # No keys? Need generation
+    if len(existing_keys) < 2:
+        return True, "Keys missing"
+    
+    # Check if signatures are expired by looking at the signed zone file
+    domain, zone_file_path = extract_zone_info()
+    signed_file = zone_file_path + ".signed"
+    
+    if not os.path.exists(signed_file):
+        return True, "Signed zone file missing"
+    
+    # Check for expired signatures in logs or file
+    try:
+        result = subprocess.run(
+            ["named-checkzone", domain, signed_file],
+            capture_output=True,
+            text=True
+        )
+        if "expired" in result.stderr.lower() or "expired" in result.stdout.lower():
+            return True, "DNSSEC signatures expired"
+    except:
+        pass
+    
+    return False, "Keys are valid"
+
+def ensure_dnssec_keys(domain, force_rotation=False):
+    """Ensure DNSSEC keys exist and are valid. Rotate if needed or forced."""
+    bind_uid, bind_gid = get_bind_uid_gid()
+    
+    if not os.path.exists(KEYS_DIR):
+        os.makedirs(KEYS_DIR)
+        os.chown(KEYS_DIR, bind_uid, bind_gid)
+        os.chmod(KEYS_DIR, 0o750)
+    
+    needs_rotation, reason = check_keys_need_rotation(domain)
+    
+    if force_rotation:
+        print("🔄 FORCED key rotation requested...")
+        reason = "Manual rotation"
+        needs_rotation = True
+    elif needs_rotation:
+        print(f"⚠️  Key rotation needed: {reason}")
+    
+    if needs_rotation:
+        # Remove old keys
+        print("   Removing old keys...")
+        for f in glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*")):
+            os.remove(f)
+        
+        # Generate new keys
+        print("   Generating new DNSSEC key pair...")
+        os.chdir(KEYS_DIR)
+        subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", domain], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", "-f", "KSK", domain], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Fix permissions
+        for f in os.listdir(KEYS_DIR):
+            os.chown(os.path.join(KEYS_DIR, f), bind_uid, bind_gid)
+            if f.endswith(".private"): 
+                os.chmod(os.path.join(KEYS_DIR, f), 0o600)
+            else: 
+                os.chmod(os.path.join(KEYS_DIR, f), 0o644)
+        
+        print("   ✓ New keys generated successfully")
+    
+    # Get key files
+    key_files = sorted(glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key")), key=os.path.getmtime)
+    if not key_files:
+        print("Error: DNSSEC keys generation failed.")
+        sys.exit(1)
+    
+    return os.path.basename(key_files[0]), os.path.basename(key_files[-1])
+
+def update_zone_file(zone_file_path, user_records, zsk_key, ksk_key):
+    """Update zone file with new records and DNSSEC keys."""
+    bind_uid, bind_gid = get_bind_uid_gid()
+    
+    if not os.path.isfile(zone_file_path):
+        print(f"Error: Zone file {zone_file_path} not found.")
+        sys.exit(1)
+
+    with open(zone_file_path, 'r') as f:
+        lines = f.readlines()
+
+    updated_lines = []
+    processed_hosts = set()
+    regex_rec = re.compile(r'^(\S+)\s+IN\s+A\s+(\S+)\s*(;.*)?$')
+
+    # Update existing records or keep them
+    for line in lines:
+        match = regex_rec.match(line)
+        if match:
+            current_host = match.group(1)
+            update_data = next((r for r in user_records if r['host'] == current_host), None)
+            if update_data:
+                print(f"  [UPDATING] {current_host}: {update_data['ip']}")
+                new_line = f"{current_host:<8} IN      A       {update_data['ip']:<15} ; {update_data['comment']}\n"
+                updated_lines.append(new_line)
+                processed_hosts.add(current_host)
+            else:
+                updated_lines.append(line)
+        else:
+            updated_lines.append(line)
+
+    # Add new records
+    for record in user_records:
+        if record['host'] not in processed_hosts:
+            print(f"  [CREATING] {record['host']}: {record['ip']}")
+            new_line = f"{record['host']:<8} IN      A       {record['ip']:<15} ; {record['comment']}\n"
+            inserted = False
+            for i, line in enumerate(updated_lines):
+                if '$INCLUDE' in line or '; Include DNSSEC keys' in line:
+                    updated_lines.insert(i, new_line)
+                    inserted = True
+                    break
+            if not inserted:
+                updated_lines.append(new_line)
+
+    # Update serial and prepare final content
+    final_lines = []
+    serial_updated = False
+    date_serial = int(datetime.utcnow().strftime('%Y%m%d%H'))
+
+    for line in updated_lines:
+        if '$INCLUDE' in line and '.key' in line: continue
+        if '; Include DNSSEC keys' in line: continue
+        
+        serial_match = re.search(r'(\d+)\s*;\s*Serial', line, re.IGNORECASE)
+        if serial_match and not serial_updated:
+            current_serial = int(serial_match.group(1))
+            new_serial = date_serial
+            if new_serial <= current_serial:
+                new_serial = current_serial + 1
+            line = re.sub(r'\d+(\s*;\s*Serial)', f'{new_serial}\\1', line, count=1)
+            serial_updated = True
+            print(f"   Serial updated: {current_serial} → {new_serial}")
+        
+        final_lines.append(line)
+
+    # Add DNSSEC keys
+    content = "".join(final_lines).rstrip()
+    content += "\n\n; Include DNSSEC keys\n"
+    content += f'$INCLUDE "{os.path.join(KEYS_DIR, zsk_key)}"\n'
+    content += f'$INCLUDE "{os.path.join(KEYS_DIR, ksk_key)}"\n'
+
+    # Write updated zone file
+    with open(zone_file_path, 'w') as f:
+        f.write(content)
+    
+    os.chown(zone_file_path, bind_uid, bind_gid)
+    os.chmod(zone_file_path, 0o644)
+
+def sign_zone(domain, zone_file_path):
+    """Sign the zone with DNSSEC."""
+    bind_uid, bind_gid = get_bind_uid_gid()
+    
+    print("🔐 Signing zone with DNSSEC...")
+    salt = secrets.token_hex(4).upper()
+    try:
+        subprocess.run([
+            "dnssec-signzone", "-A", "-3", salt, 
+            "-N", "INCREMENT", "-o", domain, 
+            "-K", KEYS_DIR, zone_file_path
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        print("   ✓ Zone signed successfully")
+    except subprocess.CalledProcessError as e:
+        print(f"Error signing zone: {e.stderr.decode()}")
+        sys.exit(1)
+
+    signed_file = zone_file_path + ".signed"
+    if os.path.exists(signed_file):
+        os.chown(signed_file, bind_uid, bind_gid)
+        os.chmod(signed_file, 0o644)
+
 def main():
     check_root()
     args = parse_arguments()
@@ -278,6 +446,7 @@ def main():
         list_zone_records(zone_file_path)
         sys.exit(0)
 
+    # Parse user records
     user_records = []
     if args.record:
         for item in args.record:
@@ -293,128 +462,20 @@ def main():
 
     print(f"Managing zone: {domain}")
 
-    if not os.path.exists(KEYS_DIR):
-        os.makedirs(KEYS_DIR)
-        os.chown(KEYS_DIR, bind_uid, bind_gid)
-        os.chmod(KEYS_DIR, 0o750)
+    # Ensure DNSSEC keys are valid (auto-rotate if expired)
+    zsk_key, ksk_key = ensure_dnssec_keys(domain, force_rotation=args.rotate_keys)
 
-    existing_keys = glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key"))
+    # Update zone file with records and keys
+    if user_records or args.rotate_keys:
+        update_zone_file(zone_file_path, user_records, zsk_key, ksk_key)
     
-    if args.rotate_keys or len(existing_keys) < 2:
-        if args.rotate_keys:
-            print("Rotation requested. Removing old keys...")
-            for f in glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*")):
-                os.remove(f)
-        else:
-            print("Keys missing. Generating new DNSSEC key pair...")
-
-        os.chdir(KEYS_DIR)
-        subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", domain], stdout=subprocess.DEVNULL)
-        subprocess.run(["dnssec-keygen", "-a", "ECDSAP256SHA256", "-n", "ZONE", "-f", "KSK", domain], stdout=subprocess.DEVNULL)
-        
-        for f in os.listdir(KEYS_DIR):
-            os.chown(os.path.join(KEYS_DIR, f), bind_uid, bind_gid)
-            if f.endswith(".private"): os.chmod(os.path.join(KEYS_DIR, f), 0o600)
-            else: os.chmod(os.path.join(KEYS_DIR, f), 0o644)
-
-    key_files = sorted(glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key")), key=os.path.getmtime)
-    if not key_files:
-        print("Error: DNSSEC keys generation failed.")
-        sys.exit(1)
-        
-    zsk_key = os.path.basename(key_files[0])
-    ksk_key = os.path.basename(key_files[-1])
-
-    if not os.path.isfile(zone_file_path):
-        print(f"Error: Zone file {zone_file_path} not found.")
-        sys.exit(1)
-
-    with open(zone_file_path, 'r') as f:
-        lines = f.readlines()
-
-    updated_lines = []
-    processed_hosts = set()
-    regex_rec = re.compile(r'^(\S+)\s+IN\s+A\s+(\S+)\s*(;.*)?$')
-
-    for line in lines:
-        match = regex_rec.match(line)
-        if match:
-            current_host = match.group(1)
-            update_data = next((r for r in user_records if r['host'] == current_host), None)
-            if update_data:
-                print(f"  [UPDATING] {current_host}: {update_data['ip']}")
-                new_line = f"{current_host:<8} IN      A       {update_data['ip']:<15} ; {update_data['comment']}\n"
-                updated_lines.append(new_line)
-                processed_hosts.add(current_host)
-            else:
-                updated_lines.append(line)
-        else:
-            updated_lines.append(line)
-
-    for record in user_records:
-        if record['host'] not in processed_hosts:
-            print(f"  [CREATING] {record['host']}: {record['ip']}")
-            new_line = f"{record['host']:<8} IN      A       {record['ip']:<15} ; {record['comment']}\n"
-            inserted = False
-            for i, line in enumerate(updated_lines):
-                 if '$INCLUDE' in line or '; Include DNSSEC keys' in line:
-                     updated_lines.insert(i, new_line)
-                     inserted = True
-                     break
-            if not inserted:
-                updated_lines.append(new_line)
-
-    final_lines = []
-    serial_updated = False
-    date_serial = int(datetime.utcnow().strftime('%Y%m%d%H'))
-
-    for line in updated_lines:
-        if '$INCLUDE' in line and '.key' in line: continue
-        if '; Include DNSSEC keys' in line: continue
-        
-        serial_match = re.search(r'(\d+)\s*;\s*Serial', line, re.IGNORECASE)
-        if serial_match and not serial_updated:
-            current_serial = int(serial_match.group(1))
-            new_serial = date_serial
-            if new_serial <= current_serial:
-                new_serial = current_serial + 1
-            line = re.sub(r'\d+(\s*;\s*Serial)', f'{new_serial}\\1', line, count=1)
-            serial_updated = True
-            print(f"Serial updated: {current_serial} -> {new_serial}")
-        
-        final_lines.append(line)
-
-    content = "".join(final_lines).rstrip()
-    content += "\n\n; Include DNSSEC keys\n"
-    content += f'$INCLUDE "{os.path.join(KEYS_DIR, zsk_key)}"\n'
-    content += f'$INCLUDE "{os.path.join(KEYS_DIR, ksk_key)}"\n'
-
-    with open(zone_file_path, 'w') as f:
-        f.write(content)
+    # Always sign the zone when making changes
+    sign_zone(domain, zone_file_path)
     
-    os.chown(zone_file_path, bind_uid, bind_gid)
-    os.chmod(zone_file_path, 0o644)
-
-    print("Signing zone with DNSSEC...")
-    salt = secrets.token_hex(4).upper()
-    try:
-        subprocess.run([
-            "dnssec-signzone", "-A", "-3", salt, 
-            "-N", "INCREMENT", "-o", domain, 
-            "-K", KEYS_DIR, zone_file_path
-        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(f"Error signing zone: {e.stderr.decode()}")
-        sys.exit(1)
-
-    signed_file = zone_file_path + ".signed"
-    if os.path.exists(signed_file):
-        os.chown(signed_file, bind_uid, bind_gid)
-        os.chmod(signed_file, 0o644)
-
+    # Reload BIND9
     reload_service()
 
-    print("Operation completed successfully.")
+    print("✅ Operation completed successfully.")
 
 if __name__ == "__main__":
     main()
