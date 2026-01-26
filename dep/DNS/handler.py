@@ -14,7 +14,6 @@ from datetime import datetime
 # ================= CONFIGURATION =================
 NAMED_CONF_LOCAL = "/etc/bind/named.conf.local"
 NAMED_CONF_OPTIONS = "/etc/bind/named.conf.options"
-RNDC_KEY_FILE = "/etc/bind/rndc.key"
 KEYS_DIR = "/etc/bind/keys"
 BIND_USER = "bind"
 BIND_GROUP = "bind"
@@ -80,45 +79,16 @@ def parse_arguments():
     
     return parser.parse_args()
 
-def fix_rndc_configuration():
-    """Ensures RNDC key exists and has correct permissions."""
-    bind_uid, bind_gid = get_bind_uid_gid()
-    
-    if not os.path.exists(RNDC_KEY_FILE):
-        print("Notice: RNDC key missing. Generating new key...")
-        try:
-            subprocess.run(["rndc-confgen", "-a", "-f", RNDC_KEY_FILE], 
-                         check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        except subprocess.CalledProcessError as e:
-            print(f"Error generating RNDC key: {e.stderr.decode()}")
-    
-    if os.path.exists(RNDC_KEY_FILE):
-        try:
-            os.chown(RNDC_KEY_FILE, bind_uid, bind_gid)
-            os.chmod(RNDC_KEY_FILE, 0o640)
-        except OSError as e:
-            print(f"Warning: Could not set permissions on {RNDC_KEY_FILE}: {e}")
-
 def reload_service():
-    """Reloads BIND9. Checks RNDC health first, falls back to Restart if needed."""
-    fix_rndc_configuration()
-
+    """Reloads BIND9 using systemctl only (No RNDC)."""
+    
+    # Check if service is active
     is_active = subprocess.run(["systemctl", "is-active", "--quiet", "named"]).returncode == 0
 
     if not is_active:
         print("Service is stopped. Starting BIND9...")
         subprocess.run(["systemctl", "enable", "--now", "named"], check=False)
         return
-
-    print("Reloading BIND9 configuration...")
-    
-    try:
-        subprocess.run(["rndc", "status"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["rndc", "reload"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        print("Success: Configuration reloaded via rndc.")
-        return
-    except subprocess.CalledProcessError:
-        print("Warning: 'rndc' communication failed (timeout/key mismatch).")
 
     print("Attempting 'systemctl reload named'...")
     reload_result = subprocess.run(["systemctl", "reload", "named"], check=False)
@@ -285,11 +255,11 @@ def ensure_dnssec_keys(domain, force_rotation=False):
     needs_rotation, reason = check_keys_need_rotation(domain)
     
     if force_rotation:
-        print("🔄 FORCED key rotation requested...")
+        print("Notice: FORCED key rotation requested...")
         reason = "Manual rotation"
         needs_rotation = True
     elif needs_rotation:
-        print(f"⚠️  Key rotation needed: {reason}")
+        print(f"Notice: Key rotation needed: {reason}")
     
     if needs_rotation:
         # Remove old keys
@@ -313,7 +283,7 @@ def ensure_dnssec_keys(domain, force_rotation=False):
             else: 
                 os.chmod(os.path.join(KEYS_DIR, f), 0o644)
         
-        print("   ✓ New keys generated successfully")
+        print("   Success: New keys generated.")
     
     # Get key files
     key_files = sorted(glob.glob(os.path.join(KEYS_DIR, f"K{domain}.*.key")), key=os.path.getmtime)
@@ -385,7 +355,7 @@ def update_zone_file(zone_file_path, user_records, zsk_key, ksk_key):
                 new_serial = current_serial + 1
             line = re.sub(r'\d+(\s*;\s*Serial)', f'{new_serial}\\1', line, count=1)
             serial_updated = True
-            print(f"   Serial updated: {current_serial} → {new_serial}")
+            print(f"   Serial updated: {current_serial} -> {new_serial}")
         
         final_lines.append(line)
 
@@ -406,7 +376,7 @@ def sign_zone(domain, zone_file_path):
     """Sign the zone with DNSSEC."""
     bind_uid, bind_gid = get_bind_uid_gid()
     
-    print("🔐 Signing zone with DNSSEC...")
+    print("Signing zone with DNSSEC...")
     salt = secrets.token_hex(4).upper()
     try:
         subprocess.run([
@@ -414,7 +384,7 @@ def sign_zone(domain, zone_file_path):
             "-N", "INCREMENT", "-o", domain, 
             "-K", KEYS_DIR, zone_file_path
         ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        print("   ✓ Zone signed successfully")
+        print("   Success: Zone signed.")
     except subprocess.CalledProcessError as e:
         print(f"Error signing zone: {e.stderr.decode()}")
         sys.exit(1)
@@ -475,7 +445,7 @@ def main():
     # Reload BIND9
     reload_service()
 
-    print("✅ Operation completed successfully.")
+    print("Operation completed successfully.")
 
 if __name__ == "__main__":
     main()
