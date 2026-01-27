@@ -1,8 +1,57 @@
-nft add rule inet firelux output udp dport 53 accept
-nft add rule inet firelux input udp dport 53 accept
-nft add rule inet firelux output udp sport 53 accept
-nft add rule inet firelux output tcp dport {53, 853} accept
-nft add rule inet firelux input tcp dport {53, 853} accept
-nft add rule inet firelux output tcp sport {53, 853} accept
+#!/bin/bash
 
-nft add rule inet firelux forward iifname "vlan910" oifname "gw854807" ip protocol tcp tcp dport {53, 853} accept
+#WAN0=eth0
+
+# Close on any error (Optional)
+#set -e
+
+whitelist() {
+    elements() {
+        echo "Adding elements to whitelist..."
+        #nft add element inet firelux whitelist_manual { 187.111.124.0/22 } # Example
+    }
+}
+
+blacklist() {
+    elements() {
+        echo "Adding elements to blacklist..."
+        #nft add element inet firelux blacklist { 45.231.112.0/22 } # Example
+    }
+}
+
+ct859224() {
+    80_443() {
+        #Reverse Proxy - Nginx
+        # DNAT Rules
+        nft add rule inet firelux prerouting iifname "$WAN0" ip protocol tcp tcp dport 80 dnat to 10.0.11.3:80
+        nft add rule inet firelux prerouting iifname "$WAN0" ip protocol tcp tcp dport 443 dnat to 10.0.11.3:443
+
+        # Forward Rules
+        nft add rule inet firelux forward ip protocol tcp tcp dport 80 accept
+        nft add rule inet firelux forward ip protocol tcp tcp dport 443 accept
+    }
+
+    62931() {
+        #VPN - WireGuard
+        # DNAT Rules
+        nft add rule inet firelux prerouting iifname "$WAN0" ip protocol udp udp dport 62931 dnat to 10.0.11.3:62931
+
+        # Forward Rules
+        nft add rule inet firelux forward ip protocol udp udp dport 62931 accept
+    }
+
+    4635() {
+        #SSH - OpenSSH
+        # DNAT Rules
+        nft add rule inet firelux prerouting iifname "$WAN0" ip protocol tcp tcp dport 4635 dnat to 10.0.11.3:4635
+
+        # Forward Rules
+        nft add rule inet firelux forward ip protocol tcp tcp dport 4635 accept
+    }
+
+    # Call
+    80_443
+    62931
+    4635
+
+}

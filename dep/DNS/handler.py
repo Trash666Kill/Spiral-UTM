@@ -79,26 +79,21 @@ def parse_arguments():
     
     return parser.parse_args()
 
-def reload_service():
-    """Reloads BIND9 using systemctl only (No RNDC)."""
+def restart_service():
+    """Restarts BIND9 using systemctl (No reload, No RNDC)."""
+    print("Restarting BIND9 service...")
     
-    # Check if service is active
-    is_active = subprocess.run(["systemctl", "is-active", "--quiet", "named"]).returncode == 0
-
-    if not is_active:
-        print("Service is stopped. Starting BIND9...")
-        subprocess.run(["systemctl", "enable", "--now", "named"], check=False)
-        return
-
-    print("Attempting 'systemctl reload named'...")
-    reload_result = subprocess.run(["systemctl", "reload", "named"], check=False)
+    # Ensure service is enabled
+    subprocess.run(["systemctl", "enable", "named"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    if reload_result.returncode == 0:
-        print("Success: Configuration reloaded via systemctl.")
+    # Force restart
+    result = subprocess.run(["systemctl", "restart", "named"], check=False)
+    
+    if result.returncode == 0:
+        print("Success: Service restarted.")
     else:
-        print("CRITICAL: Reload failed. Forcing service RESTART to apply changes...")
-        subprocess.run(["systemctl", "restart", "named"], check=False)
-        print("Service restarted.")
+        print("CRITICAL: Failed to restart BIND9 service.")
+        sys.exit(1)
 
 # ================= FORWARDERS LOGIC =================
 
@@ -172,7 +167,7 @@ def manage_forwarders(action, new_ips_str=None):
             shutil.move(NAMED_CONF_OPTIONS + ".bak", NAMED_CONF_OPTIONS)
             sys.exit(1)
             
-        reload_service()
+        restart_service()
 
 # ================= ZONE & DNSSEC LOGIC =================
 
@@ -442,8 +437,8 @@ def main():
     # Always sign the zone when making changes
     sign_zone(domain, zone_file_path)
     
-    # Reload BIND9
-    reload_service()
+    # Restart BIND9
+    restart_service()
 
     print("Operation completed successfully.")
 
